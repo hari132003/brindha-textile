@@ -2,7 +2,7 @@ import pyodbc
 
 # SQL Server connection string
 conn_str = (
-    r"DRIVER={SQL Server};"
+    r"DRIVER={ODBC Driver 17 for SQL Server};"
     r"SERVER=LAPTOP-8LVDKS7P\SQLEXPRESS;"
     r"DATABASE=TextileShopDB;"
     r"Trusted_Connection=yes;"
