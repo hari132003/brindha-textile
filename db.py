@@ -3,10 +3,11 @@ import pyodbc
 # SQL Server connection string
 conn_str = (
     r"DRIVER={ODBC Driver 17 for SQL Server};"
-    r"SERVER=LAPTOP-8LVDKS7P\SQLEXPRESS;"
+    r"SERVER=LAPTOP-8LVDKS7P\SQLEXPRESS;"  # Replace this with your actual SQL Server instance
     r"DATABASE=TextileShopDB;"
     r"Trusted_Connection=yes;"
 )
+
 
 def get_db_connection():
     try:
