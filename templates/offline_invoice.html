@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Offline Order Invoice</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .header h2 {
+            margin: 0;
+            font-size: 24px;
+            text-transform: uppercase;
+        }
+        .header p {
+            margin: 6px 0;
+            font-size: 14px;
+        }
+        hr {
+            margin: 20px 0;
+        }
+        table {
+            width: 100%;
+            margin-top: 10px;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid #333;
+            padding: 8px;
+            text-align: left;
+        }
+        .footer {
+            margin-top: 30px;
+            text-align: center;
+            font-style: italic;
+        }
+        .print-button {
+            display: block;
+            width: 200px;
+            margin: 30px auto;
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            text-align: center;
+            font-weight: bold;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .print-button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h2>Sri Birundha Textile and Ready Mades</h2>
+        <p>Shop No -45, ABC Textile Market, KS Govindha Chetty Theru -1, Bargur, Krishnagiri Dt, Tamilnadu, 635104</p>
+    </div>
+
+    <hr>
+
+    <p><strong>Order Date:</strong> {{ order_date }}</p>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Product</th>
+                <th>Quantity</th>
+                <th>Price (each)</th>
+                <th>Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in order_details %}
+            <tr>
+                <td>{{ item.product_name }}</td>
+                <td>{{ item.quantity }}</td>
+                <td>₹{{ item.price }}</td>
+                <td>₹{{ item.total_price }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <hr>
+
+    <p><strong>Total Amount:</strong> ₹{{ total_value }}</p>
+
+    <button class="print-button" onclick="window.print()">🖨️ Print Invoice</button>
+
+    <div class="footer">
+        <p>Thank you for your offline order!</p>
+    </div>
+
+</body>
+</html>

@@ -1,0 +1,46 @@
+{% extends "admin.html" %}
+
+{% block content %}
+<div class="container mt-5">
+    <h2 class="text-center mb-4">📦 Shipments Tracking</h2>
+
+    <table class="table table-hover shadow-sm">
+        <thead class="table-dark">
+            <tr>
+                <th>Order ID</th>
+                <th>Tracking Number</th>
+                <th>Carrier</th>
+                <th>Estimated Delivery</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for shipment in shipments %}
+            <tr>
+                <td>{{ shipment.order_id }}</td>
+                <td>{{ shipment.tracking_number }}</td>
+                <td>{{ shipment.carrier }}</td>
+                <td>{{ shipment.estimated_delivery.strftime('%Y-%m-%d') }}</td>
+                <td>
+                    <span class="badge 
+                        {% if shipment.status == 'Processing' %} bg-warning 
+                        {% elif shipment.status == 'In Transit' %} bg-primary 
+                        {% elif shipment.status == 'Delivered' %} bg-success 
+                        {% else %} bg-secondary {% endif %}">
+                        {{ shipment.status }}
+                    </span>
+                </td>
+                <td>
+                    <a href="{{ url_for('update_shipment_status', shipment_id=shipment.id) }}" class="btn btn-sm btn-outline-secondary">Update</a>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="6" class="text-center text-muted">No shipments found.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

@@ -1,0 +1,104 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>✅ Checkout</h2>
+
+    {% if cart %}
+        <!-- Customer Details -->
+        <h4>Customer Details</h4>
+        <p><strong>Name:</strong> {{ customer_name }}</p>
+        <p><strong>Email:</strong> {{ customer_email }}</p>
+
+        <form method="POST" action="{{ url_for('checkout') }}">
+            <!-- Address Section with Edit Mode -->
+            <div class="mb-3">
+                <label for="address"><strong>Address:</strong></label>
+                <textarea name="address" id="address" class="form-control" rows="3" readonly required>{{ customer_address }}</textarea>
+                <button type="button" class="btn btn-link p-0 mt-2" onclick="toggleAddressEdit()">✏️ Update Address</button>
+            </div>
+
+            <!-- Order Summary -->
+            <h4>🛍️ Order Summary</h4>
+            <table class="table">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Product Name</th>
+                        <th>Price (₹)</th>
+                        <th>Quantity</th>
+                        <th>Total Price (₹)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in cart %}
+                    <tr>
+                        <td>{{ item.name }}</td>
+                        <td>₹{{ item.price }}</td>
+                        <td>
+                            <input type="number" class="form-control form-control-sm quantity-input"
+                                   style="width: 60px;"
+                                   name="quantity_{{ item.product_id }}"
+                                   min="1"
+                                   value="{{ item.quantity if 'quantity' in item else 1 }}"
+                                   oninput="updateTotal(this, {{ item.price }}, {{ loop.index }})">
+                        </td>
+                        <td id="total_price_{{ loop.index }}" class="total-price">
+                            ₹{{ (item.price * item.quantity) if 'quantity' in item else item.price }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="table-warning">
+                        <td colspan="3" class="text-end"><strong>Grand Total:</strong></td>
+                        <td><strong>₹<span id="grand_total"></span></strong></td>
+                        <input type="hidden" name="grand_total" id="grand_total_input">
+                    </tr>
+                </tfoot>
+            </table>
+
+            <!-- Checkout Buttons -->
+            <button type="submit" class="btn btn-success">🛒 Place Order</button>
+            <a href="{{ url_for('view_cart') }}" class="btn btn-secondary">⬅️ Back to Cart</a>
+        </form>
+
+    {% else %}
+        <p>Your cart is empty.</p>
+    {% endif %}
+</div>
+
+<!-- JavaScript -->
+<script>
+function updateTotal(input, price, index) {
+    let quantity = parseInt(input.value) || 1;
+    if (quantity < 1) quantity = 1;
+    input.value = quantity;
+
+    let totalPrice = (price * quantity).toFixed(2);
+    document.getElementById("total_price_" + index).innerText = "₹" + totalPrice;
+
+    updateGrandTotal();
+}
+
+function updateGrandTotal() {
+    let grandTotal = 0;
+    document.querySelectorAll(".total-price").forEach(element => {
+        grandTotal += parseFloat(element.innerText.replace('₹', '')) || 0;
+    });
+    document.getElementById("grand_total").innerText = grandTotal.toFixed(2);
+    document.getElementById("grand_total_input").value = grandTotal.toFixed(2);
+}
+
+function toggleAddressEdit() {
+    const addressField = document.getElementById("address");
+    if (addressField.hasAttribute("readonly")) {
+        addressField.removeAttribute("readonly");
+        addressField.focus();
+    } else {
+        addressField.setAttribute("readonly", "readonly");
+    }
+}
+
+document.addEventListener("DOMContentLoaded", updateGrandTotal);
+</script>
+{% endblock %}

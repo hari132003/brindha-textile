@@ -1,0 +1,56 @@
+{% extends "admin.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Edit Employee</h2>
+
+    <!-- Display Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=True) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <!-- Edit Employee Form -->
+    <form method="POST" enctype="multipart/form-data" class="mb-4">
+        <div class="row">
+            <div class="col-md-6">
+                <label class="form-label">Employee Number</label>
+                <input type="text" name="emp_number" class="form-control" value="BXTX{{ employee.emp_id }}" readonly>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Name</label>
+                <input type="text" name="name" class="form-control" value="{{ employee.name }}" required>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Age</label>
+                <input type="number" name="age" class="form-control" value="{{ employee.age }}" required>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Contact Number</label>
+                <input type="text" name="contact_number" class="form-control" value="{{ employee.contact_number }}" required>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Salary</label>
+                <input type="number" name="salary" class="form-control" value="{{ employee.salary }}" required>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Upload New Image</label>
+                <input type="file" name="image" class="form-control" value ="{{employee.image_url.replace}}">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Current Image</label>
+                <br>
+                <img src="{{ url_for('static', filename=employee.image_url.replace('static/', '')) }}" alt="{{ employee.name }}" width="100">
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary mt-3">Update Employee</button>
+        <a href="{{ url_for('admin_employees') }}" class="btn btn-secondary mt-3">Cancel</a>
+    </form>
+</div>
+{% endblock %}

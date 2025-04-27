@@ -1,0 +1,55 @@
+{% extends "admin.html" %}
+
+{% block content %}
+<div class="container">
+    <h2>Edit Product</h2>
+    <form method="POST" enctype="multipart/form-data">
+        <div class="mb-3">
+            <label>Name:</label>
+            <input type="text" name="name" class="form-control" value="{{ product[1] }}" required>
+        </div>
+
+        <div class="mb-3">
+            <label>Category:</label>
+            <select name="category" class="form-control" required>
+                <option value="Male" {% if product[2] == "Male" %}selected{% endif %}>Male</option>
+                <option value="Female" {% if product[2] == "Female" %}selected{% endif %}>Female</option>
+                <option value="Male Child" {% if product[2] == "Male Child" %}selected{% endif %}>Male Child</option>
+                <option value="Female Child" {% if product[2] == "Female Child" %}selected{% endif %}>Female Child</option>
+                <option value="Others" {% if product[2] == "Others" %}selected{% endif %}>Others</option>
+            </select>
+        </div>
+
+        <div class="mb-3">
+            <label>Price:</label>
+            <input type="number" name="price" class="form-control" step="0.01" value="{{ product[3] }}" required>
+        </div>
+
+        <div class="mb-3">
+            <label>Stock:</label>
+            <select name="stock" class="form-control" required>
+                <option value="In" {% if product[4] == "In" %}selected{% endif %}>In</option>
+                <option value="Out" {% if product[4] == "Out" %}selected{% endif %}>Out</option>
+            </select>
+        </div>
+
+        <div class="mb-3">
+            <label>Description:</label>
+            <textarea name="description" class="form-control" rows="4" required>{{ product[6] }}</textarea>
+        </div>
+
+        <div class="mb-3">
+            <label>Image:</label>
+            <input type="file" name="image" class="form-control">
+        </div>
+        <div class="mb-3">
+            <label>Pieces:</label>
+            <input type="text" name="pieces" class="form-control" value="{{ product[5] }}">
+        </div>
+        
+
+        <button type="submit" class="btn btn-success">Update</button>
+        <a href="{{ url_for('admin_products') }}" class="btn btn-secondary">Cancel</a>
+    </form>
+</div>
+{% endblock %}

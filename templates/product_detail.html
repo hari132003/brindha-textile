@@ -1,0 +1,31 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-6 d-flex align-items-center justify-content-center">
+            <img src="{{ url_for('static', filename=product[7]) }}" class="img-fluid product-image" alt="{{ product[1] }}">
+        </div>
+        <div class="col-md-6">
+            <h2>{{ product[1] }}</h2>
+            <h4>Category: {{ product[2] }}</h4>
+            <h5>Price: ₹{{ product[3] }}</h5>
+            <p><strong>Description:</strong> {{ product[6] }}</p>
+            <p><strong>Stock:</strong> {{ product[4] }}</p>
+            <p><strong>Available Pieces:</strong> {{ product[5] }}</p>
+            <a href="/cart/add/{{ product[0] }}" class="btn btn-success">Add to Cart</a>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Custom styling for product image */
+    .product-image {
+        width: 50%;  /* Makes it take full width of its column */
+        max-height: 350px;  /* Sets a max height to maintain proportions */
+        object-fit: cover;  /* Ensures the image is properly cropped and fills space */
+        border-radius: 10px; /* Adds slight rounded corners */
+        box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2); /* Adds shadow for better appearance */
+    }
+</style>
+{% endblock %}

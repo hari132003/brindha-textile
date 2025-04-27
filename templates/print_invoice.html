@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Invoice</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .header h2 {
+            margin: 0;
+            font-size: 24px;
+        }
+        .header p {
+            margin: 6px 0;
+            font-size: 14px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #444;
+            padding: 8px;
+            text-align: left;
+        }
+        .footer {
+            margin-top: 30px;
+            text-align: center;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body onload="window.print()">
+
+    <div class="header">
+        <h2>Sri Birundha Textile and Ready Mades</h2>
+        <p>Shop No -45, ABC Textile Market, KS Govindha Chetty Theru -1, Bargur, Krishnagiri Dt, Tamilnadu, 635104</p>
+    </div>
+
+    <hr>
+
+    <p><strong>Order Date:</strong> {{ order_date }}</p>
+    <p><strong>Order ID:</strong> {{ order_group_id }}</p> <!-- Added Order Group ID -->
+
+    <table>
+        <thead>
+            <tr>
+                <th>Product</th>
+                <th>Quantity</th>
+                <th>Price (each)</th>
+                <th>Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>{{ product_name }}</td>
+                <td>{{ quantity }}</td>
+                <td>₹{{ price }}</td>
+                <td>₹{{ total_price }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="footer">
+        <p>Thank you for your offline order!</p>
+    </div>
+
+</body>
+</html>

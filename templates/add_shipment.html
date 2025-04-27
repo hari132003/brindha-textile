@@ -1,0 +1,14 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="container mt-5">
+    <h2>Add New Shipment</h2>
+    <form method="POST">
+        <div class="mb-3">
+            <label for="shipment_data" class="form-label">Shipment Details</label>
+            <input type="text" class="form-control" id="shipment_data" name="shipment_data" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Add Shipment</button>
+    </form>
+</div>
+{% endblock %}

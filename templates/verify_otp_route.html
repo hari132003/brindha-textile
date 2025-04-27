@@ -1,0 +1,25 @@
+<!-- templates/verify_otp_route.html -->
+{% extends "layout.html" %}
+{% block content %}
+<div class="container mt-5">
+    <h3>🔑 Verify OTP & Reset Password</h3>
+    <form method="POST">
+        <div class="mb-3">
+            <label for="otp" class="form-label">Enter OTP</label>
+            <input type="text" class="form-control" name="otp" required>
+        </div>
+
+        <div class="mb-3">
+            <label for="password" class="form-label">New Password</label>
+            <input type="password" class="form-control" name="password" required>
+        </div>
+
+        <div class="mb-3">
+            <label for="confirm_password" class="form-label">Confirm New Password</label>
+            <input type="password" class="form-control" name="confirm_password" required>
+        </div>
+
+        <button type="submit" class="btn btn-success">Reset Password</button>
+    </form>
+</div>
+{% endblock %}

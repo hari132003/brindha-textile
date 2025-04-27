@@ -1,0 +1,22 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="container mt-5">
+    <h2>Update Shipment Status (Shipment ID: {{ shipment_id }})</h2>
+
+    <form method="POST">
+        <div class="mb-3">
+            <label for="status" class="form-label">Status</label>
+            <select class="form-select" id="status" name="status" required>
+                <option value="">Select Status</option>
+                <option value="Shipped">Shipped</option>
+                <option value="In Transit">In Transit</option>
+                <option value="Delivered">Delivered</option>
+                <option value="Returned">Returned</option>
+            </select>
+        </div>
+
+        <button type="submit" class="btn btn-primary">Update Status</button>
+    </form>
+</div>
+{% endblock %}

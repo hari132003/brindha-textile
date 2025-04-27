@@ -1,0 +1,113 @@
+{% extends "admin.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="mb-4">Edit Supplier Item</h2>
+
+    <form method="POST" enctype="multipart/form-data">
+        <!-- Shop Name -->
+        <div class="mb-3">
+            <label class="form-label">Shop Name</label>
+            <input type="text" name="shop_name" class="form-control" value="{{ item[0] }}" required>
+        </div>
+
+        <!-- Shop Address -->
+        <div class="mb-3">
+            <label class="form-label">Shop Address</label>
+            <input type="text" name="shop_address" class="form-control" value="{{ item[3] }}" required>
+        </div>
+
+        <!-- Contact -->
+        <div class="mb-3">
+            <label class="form-label">Contact</label>
+            <input type="text" name="contact" class="form-control" value="{{ item[4] }}" required>
+        </div>
+
+        <!-- Item Name -->
+        <div class="mb-3">
+            <label class="form-label">Item Name</label>
+            <input type="text" name="item_name" class="form-control" value="{{ item[5] }}" required>
+        </div>
+
+        <!-- Item Quantity -->
+        <div class="mb-3">
+            <label class="form-label">Item Quantity</label>
+            <input type="text" name="item_quantity" class="form-control" value="{{ item[6] }}" required>
+        </div>
+
+        <!-- Item Value -->
+        <div class="mb-3">
+            <label class="form-label">Item Value</label>
+            <input type="text" name="item_value" class="form-control" value="{{ item[7] }}" required>
+        </div>
+
+        <!-- Current Photo -->
+        <div class="mb-3">
+            <label class="form-label">Current Photo</label><br>
+            {% if item[7] %}
+                <img id="currentPhoto" src="{{ url_for('static', filename='uploads/' + item[7]) }}" width="100" class="img-thumbnail">
+            {% else %}
+                <span class="text-muted">No Image Available</span>
+            {% endif %}
+        </div>
+
+        <!-- Upload New Photo -->
+        <div class="mb-3">
+            <label class="form-label">Upload New Photo</label>
+            <input type="file" name="photo" class="form-control" accept="image/*" onchange="previewImage(event)">
+            <img id="photoPreview" class="preview img-thumbnail mt-2" style="display: none; width: 100px;">
+        </div>
+
+        <!-- Current Video -->
+        <div class="mb-3">
+            <label class="form-label">Current Video</label><br>
+            {% if item[8] %}
+                <video id="currentVideo" width="150" controls>
+                    <source src="{{ url_for('static', filename='uploads/' + item[8]) }}" type="video/mp4">
+                    Your browser does not support the video tag.
+                </video>
+            {% else %}
+                <span class="text-muted">No Video Available</span>
+            {% endif %}
+        </div>
+
+        <!-- Upload New Video -->
+        <div class="mb-3">
+            <label class="form-label">Upload New Video</label>
+            <input type="file" name="video" class="form-control" accept="video/*" onchange="previewVideo(event)">
+            <video id="videoPreview" class="preview mt-2" controls style="display: none; width: 150px;"></video>
+        </div>
+
+        <!-- Submit & Cancel Buttons -->
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">Update Item</button>
+            <a href="{{ url_for('supplier_goods') }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<!-- JavaScript for Image & Video Preview -->
+<script>
+    function previewImage(event) {
+        const file = event.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function() {
+                const output = document.getElementById('photoPreview');
+                output.src = reader.result;
+                output.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+        }
+    }
+
+    function previewVideo(event) {
+        const file = event.target.files[0];
+        if (file) {
+            const output = document.getElementById('videoPreview');
+            output.src = URL.createObjectURL(file);
+            output.style.display = 'block';
+        }
+    }
+</script>
+{% endblock %}

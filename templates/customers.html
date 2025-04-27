@@ -1,0 +1,49 @@
+{% extends "admin.html" %}
+
+{% block content %}
+<div class="container-fluid p-4">
+    <h2>Customer List</h2>
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Phone</th>
+                <th>Email</th>
+                <th>Address</th>
+                <th>Role</th>  <!-- Role column -->
+                <th>Actions</th>  <!-- Actions column -->
+            </tr>
+        </thead>
+        <tbody>
+            {% for customer in customers %}
+            <tr>
+                <td>{{ customer[0] }}</td>
+                <td>{{ customer[1] }}</td>
+                <td>{{ customer[2] }}</td>
+                <td>{{ customer[3] }}</td>
+                <td>{{ customer[4] }}</td>
+                <td>
+                    <!-- Role Dropdown -->
+                    <form action="{{ url_for('update_role', id=customer[0]) }}" method="POST" style="display:inline;">
+                        <select name="role" class="form-select form-select-sm" onchange="this.form.submit()">
+                            <option value="user" {% if customer[6] == 'user' %}selected{% endif %}>User</option>
+                            <option value="admin" {% if customer[6] == 'admin' %}selected{% endif %}>Admin</option>
+                        </select>
+                    </form>
+                </td>
+                <td>
+                    <!-- Edit button -->
+                    <a href="{{ url_for('edit_customer', id=customer[0]) }}" class="btn btn-primary btn-sm">Edit</a>
+
+                    <!-- Delete button -->
+                    <form action="{{ url_for('delete_customer', id=customer[0]) }}" method="POST" style="display:inline;">
+                        <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure?')">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

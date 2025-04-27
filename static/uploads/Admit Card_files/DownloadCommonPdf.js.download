@@ -1,0 +1,245 @@
+﻿/// <reference path="jquery-1.4.1.min.js" />
+window.addEventListener('load', function () {
+    var downloadBtnElem = document.getElementById('i-downloadbtn');
+    const applicationNo = document.getElementById('lblApplicationNo').innerHTML;
+    const rollNo = document.getElementById('lblRollNo').innerHTML;
+    const ipAddress = document.getElementById('lblIPAddress').innerHTML;
+    const barCodeField = document.getElementById('lblBarcodeField').innerHTML;
+    const qrCodeField = document.getElementById('lblQRcodeField').innerHTML;
+    const isTestAdmitCard = document.getElementById('lblIsTestAdmitCard').innerHTML;
+    var progressBarElem = document.getElementById('i-progress-inner');
+    var barcodeValue = rollNo;
+    //if (barCodeField == 'AppNo') {
+    //    barcodeValue = applicationNo;
+    //}
+    function MakeProgress(value) {
+        var label;
+        if (value === 100) {
+            value = 1;
+            label = '(1%)Download Complete';
+            progressBarElem.classList.add('progress-bar-success');
+            progressBarElem.classList.remove('progress-bar-striped');
+            document.getElementById('i-progress').classList.add('c-display--none');
+        }
+        else {
+            label = '(' + value.toString() + '%)Downloading';
+        }
+        $('.progress-bar')
+            .css("width", value.toString() + "%")
+            .attr('aria-valuenow', value)
+            .text(label);
+    }
+
+    function GenerateBarcode() {
+        JsBarcode("#barcode", barcodeValue, {
+            format: "code39",
+            height: 50,
+            displayValue: false,
+            fontOptions: 'bold italic',
+            font: 'monospace',
+            textMargin: 0,
+            fontSize: 25,
+        });
+    }
+
+    //function generateQRCode() {
+    //    // var text = qrCodeField;
+    //    if (qrCodeField) {
+    //        alert(qrCodeField);
+    //        // Clear any previous QR code
+    //        document.getElementById("qrcode").innerHTML = "";
+    //        // Generate a new QR code
+    //        QRCode.toCanvas(document.getElementById("qrcode"), qrCodeField, function (error) {
+    //            if (error) {
+    //                alert(error);
+    //            } else {
+    //                alert("QR code generated!");
+    //            }
+    //        });
+    //    }
+    //    else {
+    //        alert("Please enter some text!");
+    //    }
+    //}
+    function generateQRCode() {
+        //var text = document.getElementById("qrText").value.trim();
+
+        // Check if the input is empty
+        //if (qrCodeField === "") {
+        //    alert("Please enter some text to generate the QR code.");
+        //    return;
+        //}
+        //alert(qrCodeField);
+        // Clear the canvas before drawing the new QR code
+        var canvas = document.getElementById("qrcodeCanvas");
+        canvas.width = 150; // Set canvas size
+        canvas.height = 150;
+
+
+        // Create a new QRious instance
+        var qr = new QRious({
+            element: canvas,
+            value: qrCodeField, // The text to encode
+            size: 150,   // Set QR code size
+            /* padding: 0,*/
+        });
+
+        // console.log("QR code generated!");
+    }
+    function getCurrentDate() {
+        var today = new Date();
+        var dd = today.getDate();
+
+        var mm = today.getMonth() + 1;
+        var yyyy = today.getFullYear();
+        var hours = today.getHours();
+        var min = today.getMinutes();
+        var sec = today.getSeconds();
+        // Check whether AM or PM 
+        var newformat = hours >= 12 ? 'PM' : 'AM';
+        // Find current hour in AM-PM Format 
+        hours = hours % 12;
+        // To display "0" as "12" 
+        hours = hours ? hours : 12;
+        min = min < 10 ? '0' + min : min;
+        if (dd < 10) {
+            dd = '0' + dd;
+        }
+        if (mm < 10) {
+            mm = '0' + mm;
+        }
+        if (min < 10) {
+            min = '0' + min;
+        }
+        if (hours < 10) {
+            hours = '0' + hours;
+        }
+        if (sec < 10) {
+            sec = '0' + sec;
+        }
+        today = dd + '/' + mm + '/' + yyyy + ' ' + hours + ':' + min + ':' + sec + ' ' + newformat;
+        return today;
+    }
+
+    function getFooterText(PageNo, TotalPages) {
+        var currentdate = getCurrentDate();
+        var text = 'Application Number : ' + applicationNo + '  IP Address : ' + ipAddress +
+            '  Date and Time : ' + currentdate + '  [Page  ' + PageNo + ' of ' + TotalPages + ' ]';
+        return text;
+    }
+
+    function downloadPdf() {
+        MakeProgress(10);
+        const fileName = 'AdmitCard-' + applicationNo;
+        var pdfElements = document.getElementsByClassName('i-pdf--page');
+        var opt = {
+            /* margin: [15, 5, 10, 2],*/
+            margin: [30, 5, 10, 2],
+            /*paddingTop :  (- 40).toString() + 'px',*/
+            filename: fileName,
+            image: { type: 'jpeg', quality: 1 },
+            html2canvas: { scale: 2, useCORS: true, letterRendering: true },
+            jsPDF: { format: 'a4', unit: 'mm' },
+            pagebreak: { avoid: ['tr', 'td', 'table'] },
+            enableLinks: true
+        };
+
+        var headerElem = document.getElementById('i-Header');
+        var fontSize = 16;
+        html2pdf().from(headerElem).set(opt).toImg().get('img').then(function (img) {
+            function asyncOp(resolve, reject) {
+                var opt = {
+                    margin: [33, 5, 10, 2],
+                    filename: fileName,
+                    image: { type: 'jpeg', quality: 0.1 },
+                    html2canvas: { scale: 2, useCORS: true, letterRendering: true },
+                    jsPDF: { format: 'a4', unit: 'mm' },
+                    pagebreak: { avoid: ['tr', 'td', 'table'] },
+                    enableLinks: true
+                };
+                let doc = html2pdf().set(opt).from(pdfElements[0]).toPdf();
+                doc.get('pdf').then(function (pdf) {
+                    totalPages = pdf.internal.getNumberOfPages();
+                    if (totalPages != 1) {
+                        var firstPageTables = document.getElementsByClassName('c-first--page-table');
+                        fontSize -= 1;
+                        for (var i = 0; i < firstPageTables.length; i++) {
+                            firstPageTables[i].style.fontSize = fontSize + 'px';
+                        }
+                        asyncOp(resolve);
+                    }
+                    else {
+                        resolve(pdf);
+                    }
+                })
+            }
+
+            new Promise(function (r, j) {
+                asyncOp(r, j);
+            }).then(function (pdf) {
+                let doc = html2pdf().set(opt).from(pdfElements[0]).toPdf();
+                for (let i = 1; i < pdfElements.length; i++) {
+                    MakeProgress(50 + i * 10);
+                    doc = doc.get('pdf').then(function (pdf) { pdf.addPage() }).from(pdfElements[i]).toContainer().toCanvas().toPdf()
+                }
+
+                doc = doc.get('pdf').then(function (pdf) {
+
+                    var pdfBase64 = btoa(pdf.output());
+
+
+                    var totalPages = pdf.internal.getNumberOfPages();
+                    pdf.setFont("helvetica");
+                    pdf.setFontSize(10);
+
+                    for (var i = 1; i <= totalPages; i++) {
+                        pdf.setPage(i);
+                        if (i != 1) {
+                            pdf.addImage(img, 'JPEG', 6, 3, pdf.internal.pageSize.getWidth() - 8, 28);
+                        }
+                        else {
+                            pdf.addImage(img, 'JPEG', 6, 3, pdf.internal.pageSize.getWidth() - 8, 28);
+                        }
+                        if (isTestAdmitCard === "true") {
+                            pdf.setFontSize(100);
+                            pdf.setTextColor('d3d3d3');
+                            pdf.setFontType('italic');
+                            pdf.text(30, pdf.internal.pageSize.getHeight() / 2 + 30, 'Test Admit Card', null, 25);
+
+                            pdf.setFontType('normal');
+                            pdf.setTextColor(0, 0, 0);
+                            pdf.setFontSize(10);
+                        }
+                        pdf.text(15, pdf.internal.pageSize.getHeight() - 3, getFooterText(i, totalPages));
+                    }
+
+
+
+                });
+                doc.save().then(function () {
+                    MakeProgress(100);
+                    downloadBtnElem.disabled = false;
+                    downloadBtnElem.classList.remove('btn-disabled');
+                    downloadBtnElem.classList.add('btn-primary');
+
+                });
+
+            });
+        });
+    }
+
+
+    GenerateBarcode();
+    generateQRCode();
+
+    downloadBtnElem.classList.remove('c-display--none');
+    downloadBtnElem.addEventListener('click', function () {
+        downloadBtnElem.disabled = true;
+        downloadBtnElem.classList.add('btn-disabled');
+        downloadBtnElem.classList.remove('btn-primary');
+        progressBarElem.classList.add('progress-bar-striped');
+        progressBarElem.classList.remove('progress-bar-success');
+        document.getElementById('i-progress').classList.remove('c-display--none');
+        downloadPdf();
+    });
+});

@@ -1,0 +1,23 @@
+{% extends 'layout.html' %}
+
+{% block title %}Track Order - Sri Birundha Textiles{% endblock %}
+
+{% block content %}
+    <h2 class="text-center mb-4">Track Your Order</h2>
+    <form method="POST" class="text-center">
+        <div class="mb-3">
+            <input type="text" name="tracking_number" class="form-control w-50 mx-auto" placeholder="Enter your tracking number" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Track</button>
+    </form>
+
+    {% if tracking_info %}
+        <div class="mt-5 text-center">
+            <h4>Tracking Details:</h4>
+            <p><strong>Status:</strong> {{ tracking_info.status }}</p>
+            <p><strong>Estimated Delivery:</strong> {{ tracking_info.estimated_delivery }}</p>
+        </div>
+    {% elif error %}
+        <div class="alert alert-danger mt-4 text-center">{{ error }}</div>
+    {% endif %}
+{% endblock %}

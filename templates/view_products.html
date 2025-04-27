@@ -1,0 +1,24 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="text-center mb-4">Product List</h2>
+
+    <div class="row">
+        {% for product in products %}
+        <div class="col-md-3 mb-4">
+            <div class="card shadow-sm" style="border: none;">
+                <img src="{{ url_for('static', filename=product[7]) }}" class="card-img-top" alt="{{ product[1] }}" style="height: 200px; object-fit: cover;">
+                <div class="card-body">
+                    <h5 class="card-title">{{ product[1] }}</h5>
+                    <p class="card-text">{{ product[2] }}</p>
+                    <p class="card-text text-muted">₹{{ product[3] }}</p>
+                   
+                    <a href="/product/{{ product[0] }}" class="btn btn-primary btn-block">View Product</a>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

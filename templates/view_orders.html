@@ -1,0 +1,85 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="container mt-5">
+    <h2>Your Orders</h2>
+
+    <!-- Filter Form -->
+    <form method="GET" class="mb-3 d-flex align-items-center gap-2">
+        <label for="status_filter" class="form-label mb-0">Filter by Status:</label>
+        <select name="status" id="status_filter" class="form-select w-auto">
+            <option value="">All</option>
+            <option value="Pending" {% if request.args.get('status') == 'Pending' %}selected{% endif %}>Pending</option>
+            <option value="Cancelled" {% if request.args.get('status') == 'Cancelled' %}selected{% endif %}>Cancelled</option>
+            <option value="Confirmed" {% if request.args.get('status') == 'Confirmed' %}selected{% endif %}>Confirmed</option>
+        </select>
+        <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+    </form>
+
+    <table class="table table-bordered table-striped">
+        <thead class="table-dark">
+            <tr>
+                <th class="d-none">Order ID</th>
+                <th>Date</th>
+                <th>Total Price</th>
+                <th>Order Status</th>
+                <th>Shipment Status</th>
+                <th>Payment Status</th>
+                <th>Product</th>
+                <th>Image</th>
+                <th>Quantity</th>
+                <th>Price</th>
+                <th>Tracking No</th>
+                <th>Estimated Delivery</th>
+                <th>Address</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if orders %}
+                {% for order in orders %}
+                <tr>
+                    <td class="d-none">{{ order[0] }}</td>
+                    <td>{{ order[1] }}</td>
+                    <td>₹{{ order[2] }}</td>
+                    <td>{{ order[3] }}</td>
+                    <td>{{ order[10] if order[10] else 'Pending' }}</td>
+                    <td>{{ order[11] if order[11] else 'Pending' }}</td>
+                    <td>{{ order[4] }}</td>
+                    <td>
+                        <img src="{{ url_for('static', filename=order[5]) }}" alt="Product Image" width="80" height="80">
+                    </td>
+                    <td>{{ order[6] }}</td>
+                    <td>₹{{ order[7] }}</td>
+                    <td>{{ order[8] if order[8] else 'N/A' }}</td>
+                    <td>{{ order[9] if order[9] else 'N/A' }}</td>
+                    <td>{{ order[12] }}</td>
+                    <td>
+                        {% if order[3] == "Pending" %}
+                        <form action="{{ url_for('cancel_order', order_id=order[0]) }}" method="POST" class="d-inline">
+                            <button type="submit" class="btn btn-danger btn-sm">Cancel</button>
+                        </form>
+                        {% elif order[3] == "Confirmed" %}
+                            <button class="btn btn-warning btn-sm" disabled>Confirmed</button>
+                        {% else %}
+                            <button class="btn btn-secondary btn-sm" disabled>{{ order[3] }}</button>
+                        {% endif %}
+
+                        {% if order[8] %}
+                        <form action="{{ url_for('track_order') }}" method="POST" class="d-inline" target="_blank">
+                            <input type="hidden" name="tracking_number" value="{{ order[8] }}">
+                            <button type="submit" class="btn btn-info btn-sm">Track</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="14" class="text-center text-muted">No orders found.</td>
+                </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
