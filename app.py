@@ -337,8 +337,11 @@ def send_confirmation_email(order_id, customer_email):
     cursor = conn.cursor()
 
     try:
-        # Fetch tracking number and estimated delivery date
-        cursor.execute("SELECT tracking_number, estimated_delivery FROM shipments WHERE order_id = ?", (order_id,))
+        # ✅ Fetch tracking number and estimated delivery date (PostgreSQL syntax)
+        cursor.execute(
+            "SELECT tracking_number, estimated_delivery FROM shipments WHERE order_id = %s",
+            (order_id,)
+        )
         shipment_info = cursor.fetchone()
 
         tracking_number = shipment_info[0] if shipment_info and shipment_info[0] else "N/A"
@@ -362,7 +365,7 @@ def send_confirmation_email(order_id, customer_email):
         Birundha Textiles
         """
 
-        # Send email (SMTP setup required)
+        # ✅ Send the email using your existing helper
         send_email(customer_email, subject, body)
 
     except Exception as e:
@@ -370,7 +373,6 @@ def send_confirmation_email(order_id, customer_email):
     finally:
         cursor.close()
         conn.close()
-
     
     msg = MIMEMultipart()
     msg['From'] = sender_email
@@ -513,17 +515,20 @@ def admin_orders():
     cursor = conn.cursor()
 
     try:
-        # ✅ Confirm order, update shipment status to "Shipped", and send email
+        # ✅ Confirm order, update shipment status, and send email
         if confirm_order_id:
-            # Update the order status to "Confirmed"
-            cursor.execute("UPDATE orders SET status = 'Confirmed' WHERE id = ?", (confirm_order_id,))
-            
-            # Update the shipment status to "Shipped" in the shipments table
-            cursor.execute("UPDATE shipments SET status = 'Shipped' WHERE order_id = ?", (confirm_order_id,))
+            cursor.execute("UPDATE orders SET status = 'Confirmed' WHERE id = %s", (confirm_order_id,))
+            cursor.execute("UPDATE shipments SET status = 'Shipped' WHERE order_id = %s", (confirm_order_id,))
             conn.commit()
 
-            cursor.execute("SELECT c.email FROM orders o JOIN customers c ON o.customer_id = c.id WHERE o.id = ?", (confirm_order_id,))
+            cursor.execute("""
+                SELECT c.email 
+                FROM orders o 
+                JOIN customers c ON o.customer_id = c.id 
+                WHERE o.id = %s
+            """, (confirm_order_id,))
             customer = cursor.fetchone()
+
             if customer:
                 customer_email = customer[0]
                 try:
@@ -534,10 +539,8 @@ def admin_orders():
 
         # ✅ Update payment status
         if update_payment_id and new_payment_status:
-            cursor.execute("UPDATE accounts SET payment_status = ? WHERE order_id = ?", (new_payment_status, update_payment_id))
+            cursor.execute("UPDATE accounts SET payment_status = %s WHERE order_id = %s", (new_payment_status, update_payment_id))
             conn.commit()
-            
-            
             flash("Payment status updated.", "success")
 
         # ✅ Fetch all order details with filters
@@ -549,29 +552,31 @@ def admin_orders():
             JOIN customers c ON o.customer_id = c.id
             LEFT JOIN shipments s ON o.id = s.order_id
         """
+
         conditions = []
         params = []
 
         if status_filter and status_filter.lower() != "all":
-            conditions.append("o.status = ?")
+            conditions.append("o.status = %s")
             params.append(status_filter)
 
         if shipment_status_filter and shipment_status_filter.lower() != "all":
-            conditions.append("s.status = ?")
+            conditions.append("s.status = %s")
             params.append(shipment_status_filter)
 
         if start_date:
-            conditions.append("CAST(o.order_date AS DATE) >= ?")
+            conditions.append("CAST(o.order_date AS DATE) >= %s")
             params.append(start_date)
+
         if end_date:
-            conditions.append("CAST(o.order_date AS DATE) <= ?")
+            conditions.append("CAST(o.order_date AS DATE) <= %s")
             params.append(end_date)
 
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
 
         query += " ORDER BY o.order_date DESC"
-        cursor.execute(query, params)
+        cursor.execute(query, tuple(params))
         orders = cursor.fetchall()
 
         order_data = []
@@ -582,16 +587,17 @@ def admin_orders():
                 SELECT oi.id, p.name AS product_name, oi.quantity, oi.price, p.image_url
                 FROM order_items oi
                 JOIN products p ON oi.product_id = p.id
-                WHERE oi.order_id = ? 
+                WHERE oi.order_id = %s
             """, (order_id,))
             order_items = cursor.fetchall()
 
             cursor.execute(""" 
                 SELECT payment_status, transaction_id 
                 FROM accounts 
-                WHERE order_id = ? 
+                WHERE order_id = %s
             """, (order_id,))
             account = cursor.fetchone()
+
             payment_status = account[0] if account else "Not Provided"
             transaction_id = account[1] if account and account[1] else "N/A"
 
@@ -623,6 +629,7 @@ def admin_orders():
     except Exception as e:
         flash("Database error: " + str(e), "danger")
         order_data = []
+
     finally:
         conn.close()
 
@@ -948,38 +955,42 @@ def account_details(order_id):
         payment_status = "Pending"
 
         cursor.execute(
-            "SELECT id FROM accounts WHERE order_id = ? AND customer_id = ?",
-            (order_id, session["user_id"])
-        )
+    "SELECT id FROM accounts WHERE order_id = %s AND customer_id = %s",
+    (order_id, session["user_id"])
+)
+
         existing = cursor.fetchone()
 
         if existing:
-            cursor.execute(""" 
-                UPDATE accounts 
-                SET name = ?, account_no = ?, ifsc_no = ?, transaction_id = ?, payment_status = ?,
-                    cvv = ?, expiry_month = ?, expiry_year = ?
-                WHERE order_id = ? AND customer_id = ?
-            """, (
-                name, account_no, ifsc_no, transaction_id, payment_status,
-                cvv, expiry_month, expiry_year,
-                order_id, session["user_id"]
-            ))
+            cursor.execute("""
+    UPDATE accounts 
+    SET name = %s, account_no = %s, ifsc_no = %s, transaction_id = %s, payment_status = %s,
+        cvv = %s, expiry_month = %s, expiry_year = %s
+    WHERE order_id = %s AND customer_id = %s
+""", (
+    name, account_no, ifsc_no, transaction_id, payment_status,
+    cvv, expiry_month, expiry_year,
+    order_id, session["user_id"]
+))
+
         else:
-            cursor.execute(""" 
-                INSERT INTO accounts (
-                    customer_id, order_id, name, account_no, ifsc_no, transaction_id,
-                    payment_status, cvv, expiry_month, expiry_year
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                session["user_id"], order_id, name, account_no, ifsc_no, transaction_id,
-                payment_status, cvv, expiry_month, expiry_year
-            ))
+            cursor.execute("""
+    INSERT INTO accounts (
+        customer_id, order_id, name, account_no, ifsc_no, transaction_id,
+        payment_status, cvv, expiry_month, expiry_year
+    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+""", (
+    session["user_id"], order_id, name, account_no, ifsc_no, transaction_id,
+    payment_status, cvv, expiry_month, expiry_year
+))
+
 
         conn.commit()
 
         otp = str(random.randint(100000, 999999))
 
-        cursor.execute("SELECT email FROM customers WHERE id = ?", (session["user_id"],))
+        cursor.execute("SELECT email FROM customers WHERE id = %s", (session["user_id"],))
+
         email = cursor.fetchone()[0]
         conn.close()
 
@@ -1016,18 +1027,19 @@ def account_details(order_id):
         return redirect(url_for("verify_account_otp"))
 
     # GET request
-    cursor.execute(""" 
-        SELECT name, account_no, ifsc_no, transaction_id, payment_status, cvv, expiry_month, expiry_year
-        FROM accounts 
-        WHERE order_id = ? AND customer_id = ?
-    """, (order_id, session["user_id"]))
+    cursor.execute("""
+    SELECT name, account_no, ifsc_no, transaction_id, payment_status, cvv, expiry_month, expiry_year
+    FROM accounts 
+    WHERE order_id = %s AND customer_id = %s
+""", (order_id, session["user_id"]))
+
     account = cursor.fetchone()
 
     cursor.execute(""" 
-        SELECT SUM(quantity * price)
-        FROM order_items
-        WHERE order_id = ?
-    """, (order_id,))
+    SELECT SUM(quantity * price)
+    FROM order_items
+    WHERE order_id = %s
+""", (order_id,))
     price_row = cursor.fetchone()
     total_price = price_row[0] if price_row and price_row[0] else 0.0
 
@@ -1071,10 +1083,12 @@ def verify_account_otp():
 
             # ✅ Select the customer_id using the order_id (dynamic selection)
             cursor.execute("""
-                SELECT c.id, c.name, c.email FROM customers c
-                JOIN orders o ON c.id = o.customer_id
-                WHERE o.id = ?
-            """, (order_id,))
+    SELECT c.id, c.name, c.email 
+    FROM customers c
+    JOIN orders o ON c.id = o.customer_id
+    WHERE o.id = %s
+""", (order_id,))
+
             result = cursor.fetchone()
 
             if not result:
@@ -1086,9 +1100,10 @@ def verify_account_otp():
 
             # ✅ Get transaction_id from accounts table
             cursor.execute("""
-                SELECT transaction_id FROM accounts
-                WHERE order_id = ? AND customer_id = ?
+    SELECT transaction_id FROM accounts
+    WHERE order_id = %s AND customer_id = %s
             """, (order_id, customer_id))
+
             txn_result = cursor.fetchone()
 
             if not txn_result or not txn_result[0]:
@@ -1100,16 +1115,19 @@ def verify_account_otp():
 
             # ✅ Update payment status in accounts table
             cursor.execute("""
-                UPDATE accounts SET payment_status = ?
-                WHERE order_id = ? AND transaction_id = ?
-            """, ("Paid", order_id, transaction_id))
+    UPDATE accounts SET payment_status = %s
+    WHERE order_id = %s AND transaction_id = %s
+""", ("Paid", order_id, transaction_id))
+
 
             # ✅ Get product names related to the order
             cursor.execute("""
-                SELECT p.name FROM products p
-                JOIN order_items oi ON oi.product_id = p.id
-                WHERE oi.order_id = ?
-            """, (order_id,))
+    SELECT p.name 
+    FROM products p
+    JOIN order_items oi ON oi.product_id = p.id
+    WHERE oi.order_id = %s
+""", (order_id,))
+
             products = cursor.fetchall()
             product_names = ", ".join([p[0] for p in products]) if products else "your selected items"
 
@@ -1362,7 +1380,8 @@ def view_products():
 def product_details(product_id):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, name, category, price, stock, pieces, description, image_url FROM products WHERE id = ?", (product_id,))
+    cursor.execute("SELECT id, name, category, price, stock, pieces, description, image_url FROM products WHERE id = %s", (product_id,))
+
     product = cursor.fetchone()
     conn.close()
 
@@ -1505,7 +1524,8 @@ def view_cart():
     cursor = conn.cursor()
 
     # Fetch customer details from the database using session user_id
-    cursor.execute("SELECT id, name, email FROM customers WHERE id = ?", (session["user_id"],))
+    cursor.execute("SELECT id, name, email FROM customers WHERE id = %s", (session["user_id"],))
+
     customer = cursor.fetchone()
 
     if not customer:
@@ -1528,7 +1548,8 @@ def add_to_cart(product_id):
     cursor = conn.cursor()
 
     # Fetch product details
-    cursor.execute("SELECT id, name, price FROM products WHERE id = ?", (product_id,))
+    cursor.execute("SELECT id, name, price FROM products WHERE id = %s", (product_id,))
+
     product = cursor.fetchone()
     conn.close()
 
@@ -1573,6 +1594,8 @@ def remove_from_cart(product_id):
     # Update session
     session["cart"] = cart
     flash("Item removed from cart!", "success")
+    
+    
     return redirect(url_for("view_cart"))
 
 @app.route('/offline_orders', methods=['GET', 'POST'])
@@ -1609,7 +1632,8 @@ def offline_orders():
                 flash(f"Not enough pieces available for {name}. Only {current_pieces} left.", "danger")
                 return redirect(url_for('offline_orders'))
 
-            cursor.execute("UPDATE products SET pieces = ? WHERE id = ?", (new_pieces, product_id))
+            cursor.execute("UPDATE products SET pieces = %s WHERE id = %s", (new_pieces, product_id))
+
 
             # Insert into offline_orders table
             cursor.execute(""" 
@@ -1704,7 +1728,7 @@ def checkout():
     FROM shipments s
     JOIN orders o ON s.order_id = o.id
     JOIN customers c ON o.customer_id = c.id
-    WHERE s.estimated_delivery::date = CURRENT_DATE
+    WHERE DATE(s.estimated_delivery) = CURRENT_DATE
     AND s.status != 'Delivered';
 """)
 
@@ -1732,11 +1756,13 @@ def checkout():
         except Exception as e:
             print(f"Email error: {e}")
 
-        cursor.execute("UPDATE shipments SET status = 'Delivered' WHERE id = ?", (shipment_id,))
+        cursor.execute("UPDATE shipments SET status = 'Delivered' WHERE id = %s", (shipment_id,))
+
         conn.commit()
 
     # ✅ Fetch customer info (now includes address)
-    cursor.execute("SELECT id, name, email, address FROM customers WHERE id = ?", (session["user_id"],))
+    cursor.execute("SELECT id, name, email, address FROM customers WHERE id = %s", (session["user_id"],))
+
     customer = cursor.fetchone()
 
     if not customer:
@@ -1750,9 +1776,10 @@ def checkout():
         # Update address
         new_address = request.form.get("address", "").strip()
         if new_address and new_address != customer_address:
-            cursor.execute("UPDATE customers SET address = ? WHERE id = ?", (new_address, customer_id))
-            conn.commit()
-            customer_address = new_address
+           cursor.execute("UPDATE customers SET address = %s WHERE id = %s", (new_address, customer_id))
+
+           conn.commit()
+           customer_address = new_address
 
         # Process cart items
         updated_cart = []
@@ -1779,27 +1806,29 @@ def checkout():
 
         # Insert into orders
         cursor.execute("""
-            INSERT INTO orders (customer_id, total_price, order_date)
-            OUTPUT INSERTED.id
-            VALUES (?, ?, GETDATE());
-        """, (customer_id, total_price))
+    INSERT INTO orders (customer_id, total_price, order_date)
+    VALUES (%s, %s, CURRENT_TIMESTAMP)
+    RETURNING id;
+""", (customer_id, total_price))
+
         order_id = cursor.fetchone()[0]
         conn.commit()
 
         # Insert order items and update stock
         for item in updated_cart:
             cursor.execute("""
-                INSERT INTO order_items (order_id, product_id, quantity, price)
-                VALUES (?, ?, ?, ?);
-            """, (order_id, item["product_id"], item["quantity"], item["price"]))
-            cursor.execute("UPDATE products SET pieces = pieces - ? WHERE id = ?", (item["quantity"], item["product_id"]))
+    INSERT INTO order_items (order_id, product_id, quantity, price)
+    VALUES (%s, %s, %s, %s);
+""", (order_id, item["product_id"], item["quantity"], item["price"]))
+        cursor.execute("UPDATE products SET pieces = pieces - %s WHERE id = %s", (item["quantity"], item["product_id"]))
+
 
         # Create shipment
         tracking_number = f"TRK{order_id}{customer_id}"
         cursor.execute("""
-            INSERT INTO shipments (order_id, tracking_number, carrier, estimated_delivery, status)
-            VALUES (?, ?, ?, DATEADD(DAY, 5, GETDATE()), 'Processing');
-        """, (order_id, tracking_number, 'FedEx'))
+    INSERT INTO shipments (order_id, tracking_number, carrier, estimated_delivery, status)
+    VALUES (%s, %s, %s, CURRENT_DATE + INTERVAL '5 days', 'Processing');
+""", (order_id, tracking_number, 'FedEx'))
 
         conn.commit()
         session.pop("cart", None)
