@@ -62,7 +62,12 @@ def login():
         # Check for customer login
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT id, name, password, role FROM customers WHERE email = ?", (email,))
+        cursor.execute(
+    "SELECT id, name, password, role FROM customers WHERE email = %s",
+    (email,)
+)
+
+
         user = cursor.fetchone()
         conn.close()
 
@@ -114,7 +119,7 @@ def admin_customers():
     
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, name, phone, email, address, password, role FROM customers")
+    cursor.execute("SELECT id, name, phone, email, address FROM customers")  # Fetch all customers, no filtering by id
     customers = cursor.fetchall()
     conn.close()
 
@@ -126,6 +131,7 @@ def admin_customers():
             return redirect(url_for("index"))  # Redirect to index page
 
     return render_template("customers.html", customers=customers)
+
 @app.route("/admin/customers/update_role/<int:id>", methods=["POST"])
 def update_role(id):
     if session.get("role") != "admin":
@@ -133,16 +139,27 @@ def update_role(id):
         return redirect(url_for("login"))
     
     new_role = request.form["role"]
-    
-    # Update the role in the database
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE customers SET role = ? WHERE id = ?", (new_role, id))
-    conn.commit()
-    conn.close()
 
-    flash(f"Customer role updated to {new_role}!", "success")
+    # Validate the new role (optional but good practice)
+    if new_role not in ["admin", "user"]:
+        flash("Invalid role selected!", "danger")
+        return redirect(url_for("admin_customers"))
+    
+    try:
+        # Update the role in the database
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE customers SET role = %s WHERE id = %s", (new_role, id))
+        conn.commit()
+        conn.close()
+
+        flash(f"Customer role updated to {new_role}!", "success")
+    except Exception as e:
+        # Handle exceptions (e.g., database errors)
+        flash(f"An error occurred: {str(e)}", "danger")
+        conn.rollback()  # In case of an error, rollback the transaction
     return redirect(url_for("admin_customers"))
+
 
 def send_welcome_email(to_email):
     from_email = "birundhatextiles@gmail.com"
@@ -210,7 +227,7 @@ def signup():
 
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM customers WHERE email = ?", (email,))
+        cursor.execute("SELECT id FROM customers WHERE email = %s", (email,))
         existing_user = cursor.fetchone()
 
         if existing_user:
@@ -255,8 +272,9 @@ def verify_otp_page():  # Renamed the function to avoid conflicts
             conn = get_db_connection()
             cursor = conn.cursor()
             cursor.execute("""
-                INSERT INTO customers (name, email, phone, address, password, role)
-                VALUES (?, ?, ?, ?, ?, 'user')
+               INSERT INTO customers (name, email, phone, address, password, role)
+VALUES (%s, %s, %s, %s, %s, 'user')
+
             """, (
                 signup_data["name"],
                 signup_data["email"],
@@ -303,8 +321,9 @@ def admin_products():
             image_url = "uploads/default.png"
         
         cursor.execute("""
-            INSERT INTO products (name, category, price, stock, description, image_url, pieces)
-            VALUES (?, ?, ?, ?, ?, ?, ?)""", (name, category, price, stock, description, image_url, pieces))
+           INSERT INTO products (name, category, price, stock, description, image_url, pieces)
+VALUES (%s, %s, %s, %s, %s, %s, %s)
+""", (name, category, price, stock, description, image_url, pieces))
         conn.commit()
         flash("Product added successfully!", "success")
 
@@ -1363,7 +1382,7 @@ def edit_customer(id):
     cursor = conn.cursor()
 
     # Fetch customer data
-    cursor.execute("SELECT id, name, phone, email, address FROM customers WHERE id = ?", (id,))
+    cursor.execute("SELECT id, name, phone, email, address FROM customers WHERE id = %s", (id,))
     customer = cursor.fetchone()
 
     if not customer:
@@ -1379,9 +1398,9 @@ def edit_customer(id):
 
         cursor.execute("""
             UPDATE customers 
-            SET name = ?, phone = ?, email = ?, address = ? 
-            WHERE id = ?
-        """, (name, phone, email, address, id))  # ✅ include address here
+            SET name = %s, phone = %s, email = %s, address = %s 
+            WHERE id = %s
+        """, (name, phone, email, address, id))  # ✅ use %s for PostgreSQL
 
         conn.commit()
         conn.close()
@@ -1391,6 +1410,7 @@ def edit_customer(id):
 
     conn.close()
     return render_template("edit_customer.html", customer=customer)
+
 
 
 @app.route("/admin/customers/delete/<int:id>", methods=["POST"])
@@ -1420,7 +1440,8 @@ def edit_product(id):
     cursor = conn.cursor()
 
     # Fetch product details
-    cursor.execute("SELECT id, name, category, price, stock, pieces, description, image_url FROM products WHERE id = ?", (id,))
+    cursor.execute("SELECT id, name, category, price, stock, pieces, description, image_url FROM products WHERE id = %s", (id,))
+
     product = cursor.fetchone()
 
     if not product:
@@ -1446,9 +1467,11 @@ def edit_product(id):
             image_url = product[7]  # Keep existing image if not changed
         
         cursor.execute("""
-            UPDATE products SET name = ?, category = ?, price = ?, stock = ?, pieces = ?, description = ?, image_url = ?
-            WHERE id = ?
-        """, (name, category, price, stock, pieces, description, image_url, id))
+    UPDATE products 
+    SET name = %s, category = %s, price = %s, stock = %s, pieces = %s, description = %s, image_url = %s
+    WHERE id = %s
+""", (name, category, price, stock, pieces, description, image_url, id))
+
         conn.commit()
         conn.close()
 
@@ -1677,13 +1700,15 @@ def checkout():
 
     # ✅ Send delivery emails and update status
     cursor.execute("""
-        SELECT s.id, s.order_id, c.email
-        FROM shipments s
-        JOIN orders o ON s.order_id = o.id
-        JOIN customers c ON o.customer_id = c.id
-        WHERE CAST(s.estimated_delivery AS DATE) = CAST(GETDATE() AS DATE)
-        AND s.status != 'Delivered';
-    """)
+    SELECT s.id, s.order_id, c.email
+    FROM shipments s
+    JOIN orders o ON s.order_id = o.id
+    JOIN customers c ON o.customer_id = c.id
+    WHERE s.estimated_delivery::date = CURRENT_DATE
+    AND s.status != 'Delivered';
+""")
+
+
     deliveries_today = cursor.fetchall()
 
     for shipment_id, order_id, email in deliveries_today:
@@ -1799,11 +1824,12 @@ def process_deliveries():
 
     cursor.execute("""
         SELECT s.id, s.order_id, c.email
-        FROM shipments s
-        JOIN orders o ON s.order_id = o.id
-        JOIN customers c ON o.customer_id = c.id
-        WHERE CAST(s.estimated_delivery AS DATE) = CAST(GETDATE() AS DATE)
-        AND s.status != 'Delivered';
+FROM shipments s
+JOIN orders o ON s.order_id = o.id
+JOIN customers c ON o.customer_id = c.id
+WHERE s.estimated_delivery::date = CURRENT_DATE
+AND s.status != 'Delivered';
+
     """)
     deliveries_today = cursor.fetchall()
 
