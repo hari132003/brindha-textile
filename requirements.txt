@@ -2,3 +2,4 @@ Flask
 gunicorn
 xhtml2pdf
 pyodbc
+psycopg2-binary
