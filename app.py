@@ -2418,6 +2418,10 @@ def supplier_goods():
 
     return render_template("supplier_goods.html", items=items)
 
+import os
+from werkzeug.utils import secure_filename
+from flask import current_app
+
 @app.route('/edit_supplier_goods/<int:item_id>', methods=['GET', 'POST'])
 def edit_supplier_goods(item_id):
     if 'supplier_number' not in session:
@@ -2427,11 +2431,8 @@ def edit_supplier_goods(item_id):
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    # Fetch only this supplier's item
-    cursor.execute("""
-        SELECT * FROM supplier_goods
-         WHERE id = %s AND supplier_number = %s
-    """, (item_id, session['supplier_number']))
+    # Get the item
+    cursor.execute("SELECT * FROM supplier_goods WHERE id = %s AND supplier_number = %s", (item_id, session['supplier_number']))
     item = cursor.fetchone()
 
     if not item:
@@ -2441,56 +2442,53 @@ def edit_supplier_goods(item_id):
         return redirect(url_for('supplier_goods'))
 
     if request.method == 'POST':
-        # Form fields (fallback to existing values)
-        shop_name     = request.form.get('shop_name',    item['shop_name'])
-        shop_address  = request.form.get('shop_address', item['shop_address'])
-        contact       = request.form.get('contact',      item['contact'])
-        item_name     = request.form.get('item_name',    item['item_name'])
-        item_quantity = request.form.get('item_quantity',item['item_quantity'])
-        item_value    = request.form.get('item_value',   item['item_value'])
+        shop_name     = request.form.get('shop_name')
+        shop_address  = request.form.get('shop_address')
+        contact       = request.form.get('contact')
+        item_name     = request.form.get('item_name')
+        item_quantity = request.form.get('item_quantity')
+        item_value    = request.form.get('item_value')
 
-        # Handle uploads
+        # File uploads
         photo_file = request.files.get('photo')
         video_file = request.files.get('video')
-        photo_url  = save_file(photo_file) or item['photo_url']
-        video_url  = save_file(video_file) or item['video_url']
 
-        # Update
+        # Save files and update URLs if new ones are uploaded
+        photo_url = save_file(photo_file) if photo_file and photo_file.filename else item['photo_url']
+        video_url = save_file(video_file) if video_file and video_file.filename else item['video_url']
+
+        # Update DB
         cursor.execute("""
-            UPDATE supplier_goods
-               SET shop_name    = %s,
-                   shop_address = %s,
-                   contact      = %s,
-                   item_name    = %s,
-                   item_quantity= %s,
-                   item_value   = %s,
-                   photo_url    = %s,
-                   video_url    = %s
-             WHERE id = %s AND supplier_number = %s
+            UPDATE supplier_goods SET
+                shop_name = %s,
+                shop_address = %s,
+                contact = %s,
+                item_name = %s,
+                item_quantity = %s,
+                item_value = %s,
+                photo_url = %s,
+                video_url = %s
+            WHERE id = %s AND supplier_number = %s
         """, (
             shop_name, shop_address, contact,
             item_name, item_quantity, item_value,
             photo_url, video_url,
             item_id, session['supplier_number']
         ))
-        conn.commit()
 
+        conn.commit()
         cursor.close()
         conn.close()
         flash("Item updated successfully!", "success")
         return redirect(url_for('supplier_goods'))
 
-    # GET: render edit form
+    # GET
     cursor.close()
     conn.close()
     return render_template('edit_supplier_goods.html', item=item)
 
 
 def save_file(file_storage):
-    """
-    Save an uploaded file to app.config['UPLOAD_FOLDER'].
-    Return the filename on success, or None otherwise.
-    """
     if not file_storage or file_storage.filename == '':
         return None
 
@@ -2498,7 +2496,7 @@ def save_file(file_storage):
         return None
 
     filename = secure_filename(file_storage.filename)
-    upload_path = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+    upload_path = os.path.join(current_app.static_folder, 'uploads', filename)
     file_storage.save(upload_path)
     return filename
 
