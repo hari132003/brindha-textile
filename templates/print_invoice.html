@@ -59,14 +59,18 @@
             </tr>
         </thead>
         <tbody>
+            {% for item in order_details %}
             <tr>
-                <td>{{ product_name }}</td>
-                <td>{{ quantity }}</td>
-                <td>₹{{ price }}</td>
-                <td>₹{{ total_price }}</td>
+                <td>{{ item.product_name }}</td>
+                <td>{{ item.quantity }}</td>
+                <td>₹{{ item.unit_price }}</td>
+                <td>₹{{ item.total_price }}</td>
             </tr>
+            {% endfor %}
         </tbody>
     </table>
+
+    <p><strong>Total Price for this Order Group:</strong> ₹{{ total_price }}</p>
 
     <div class="footer">
         <p>Thank you for your offline order!</p>
