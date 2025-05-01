@@ -25,12 +25,13 @@ import hashlib
 SESSION_TIMEOUT = 900
 app = Flask(__name__)
 app.secret_key = "your_secret_key"
-app.config['UPLOAD_FOLDER'] = 'static/uploads'
+app.config['UPLOAD_FOLDER'] = r'E:\New folder\static\uploads'
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'png', 'jpg', 'jpeg', 'gif'}
-
+def allowed_video(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'mp4', 'mkv', 'avi'}
 @app.route("/")
 def home():
     return render_template("index.html")
@@ -2457,6 +2458,40 @@ import os
 from werkzeug.utils import secure_filename
 from flask import current_app
 
+def save_file(file_storage):
+    if not file_storage or file_storage.filename == '':
+        return None
+
+    if not allowed_file(file_storage.filename):
+        return None
+
+    # Generate unique filename to avoid conflicts
+    filename = f"{uuid.uuid4().hex}_{secure_filename(file_storage.filename)}"
+    upload_path = os.path.join(current_app.static_folder, 'uploads', filename)
+
+    # Ensure upload directory exists
+    os.makedirs(os.path.dirname(upload_path), exist_ok=True)
+
+    file_storage.save(upload_path)
+    return filename
+
+
+def allowed_image(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'png', 'jpg', 'jpeg', 'gif'}
+
+def allowed_video(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'mp4', 'mkv', 'avi'}
+
+# Save file function
+def save_file(file):
+    if file:
+        filename = secure_filename(file.filename)
+        path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(path)
+        return filename
+    return None
+
+# Edit supplier goods route
 @app.route('/edit_supplier_goods/<int:item_id>', methods=['GET', 'POST'])
 def edit_supplier_goods(item_id):
     if 'supplier_number' not in session:
@@ -2466,8 +2501,11 @@ def edit_supplier_goods(item_id):
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    # Get the item
-    cursor.execute("SELECT * FROM supplier_goods WHERE id = %s AND supplier_number = %s", (item_id, session['supplier_number']))
+    # Fetch the item
+    cursor.execute(
+        "SELECT * FROM supplier_goods WHERE id = %s AND supplier_number = %s",
+        (item_id, session['supplier_number'])
+    )
     item = cursor.fetchone()
 
     if not item:
@@ -2477,6 +2515,7 @@ def edit_supplier_goods(item_id):
         return redirect(url_for('supplier_goods'))
 
     if request.method == 'POST':
+        # Get form data
         shop_name     = request.form.get('shop_name')
         shop_address  = request.form.get('shop_address')
         contact       = request.form.get('contact')
@@ -2484,13 +2523,19 @@ def edit_supplier_goods(item_id):
         item_quantity = request.form.get('item_quantity')
         item_value    = request.form.get('item_value')
 
-        # File uploads
+        # Get uploaded files
         photo_file = request.files.get('photo')
         video_file = request.files.get('video')
 
-        # Save files and update URLs if new ones are uploaded
-        photo_url = save_file(photo_file) if photo_file and photo_file.filename else item['photo_url']
-        video_url = save_file(video_file) if video_file and video_file.filename else item['video_url']
+        # Process files
+        photo_url = item['photo_url']
+        video_url = item['video_url']
+
+        if photo_file and allowed_image(photo_file.filename):
+            photo_url = save_file(photo_file)
+
+        if video_file and allowed_video(video_file.filename):
+            video_url = save_file(video_file)
 
         # Update DB
         cursor.execute("""
@@ -2517,51 +2562,45 @@ def edit_supplier_goods(item_id):
         flash("Item updated successfully!", "success")
         return redirect(url_for('supplier_goods'))
 
-    # GET
+    # GET request: show form
     cursor.close()
     conn.close()
     return render_template('edit_supplier_goods.html', item=item)
 
-
-def save_file(file_storage):
-    if not file_storage or file_storage.filename == '':
-        return None
-
-    if not allowed_file(file_storage.filename):
-        return None
-
-    filename = secure_filename(file_storage.filename)
-    upload_path = os.path.join(current_app.static_folder, 'uploads', filename)
-    file_storage.save(upload_path)
-    return filename
-
-
 @app.route('/delete_supplier_goods/<int:item_id>', methods=['POST'])
 def delete_supplier_goods(item_id):
+    if 'supplier_number' not in session:
+        flash("Please log in first!", "warning")
+        return redirect(url_for('supplier_login'))
+
     conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    # Check if item exists
-    cursor.execute("SELECT * FROM SupplierGoods WHERE id=?", (item_id,))
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    # Fetch the item with supplier check
+    cursor.execute("SELECT * FROM supplier_goods WHERE id = %s AND supplier_number = %s", (item_id, session['supplier_number']))
     item = cursor.fetchone()
-    
+
     if not item:
+        cursor.close()
+        conn.close()
         flash("Item not found!", "danger")
         return redirect(url_for('supplier_goods'))
 
-    # Delete associated files (photo & video) if they exist
-    photo_path = os.path.join(app.config['UPLOAD_FOLDER'], item[6]) if item[6] else None
-    video_path = os.path.join(app.config['UPLOAD_FOLDER'], item[7]) if item[7] else None
+    # Delete associated files if they exist
+    photo_path = os.path.join(app.config['UPLOAD_FOLDER'], item['photo_url']) if item['photo_url'] else None
+    video_path = os.path.join(app.config['UPLOAD_FOLDER'], item['video_url']) if item['video_url'] else None
 
     if photo_path and os.path.exists(photo_path):
         os.remove(photo_path)
-    
+
     if video_path and os.path.exists(video_path):
         os.remove(video_path)
 
-    # Delete item from database
-    cursor.execute("DELETE FROM SupplierGoods WHERE id=?", (item_id,))
+    # Delete from database
+    cursor.execute("DELETE FROM supplier_goods WHERE id = %s AND supplier_number = %s", (item_id, session['supplier_number']))
     conn.commit()
+
+    cursor.close()
     conn.close()
 
     flash("Item deleted successfully!", "success")
