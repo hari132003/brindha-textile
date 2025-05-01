@@ -398,34 +398,35 @@ def add_shipment():
     return render_template("add_shipment.html")
 @app.route('/admin/shipments/update/<int:shipment_id>', methods=['GET', 'POST'])
 def update_shipment_status(shipment_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
     if request.method == 'POST':
-        # Get the new status from the form (ensure your form includes a field for status)
         new_status = request.form.get('status')
-        
-        # Example of updating the shipment status in the database
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+
         try:
-            # Update the shipment status
-            cursor.execute("UPDATE shipments SET status = ? WHERE id = ?", (new_status, shipment_id))
+            # Use %s placeholders for PostgreSQL
+            cursor.execute("UPDATE shipments SET status = %s WHERE id = %s", (new_status, shipment_id))
             conn.commit()
             flash("Shipment status updated successfully!", "success")
         except Exception as e:
             flash(f"Error updating shipment status: {e}", "danger")
         finally:
+            cursor.close()
             conn.close()
-            
 
-        # Redirect to the admin shipments page after updating
-        return redirect(url_for('admin_shipments'))  # Ensure 'admin_shipments' is the correct route
+        return redirect(url_for('admin_shipments'))
 
-    # Handle GET request - display the current shipment status
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT * FROM shipments WHERE id = ?", (shipment_id,))
-    shipment = cursor.fetchone()
+    # Handle GET request - display current shipment status
+    try:
+        cursor.execute("SELECT * FROM shipments WHERE id = %s", (shipment_id,))
+        shipment = cursor.fetchone()
+    except Exception as e:
+        flash(f"Error fetching shipment: {e}", "danger")
+        shipment = None
+    finally:
+        cursor.close()
+        conn.close()
 
     if shipment is None:
         flash("Shipment not found.", "danger")
