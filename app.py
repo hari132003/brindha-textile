@@ -1,6 +1,9 @@
 import os
 import uuid
 import string
+import psycopg2
+import psycopg2.extras
+
 from xhtml2pdf import pisa
 from flask import send_file
 import time
@@ -557,26 +560,26 @@ def admin_orders():
         params = []
 
         if status_filter and status_filter.lower() != "all":
-            conditions.append("o.status = %s")
+            conditions.append("o.status = $" + str(len(params) + 1))
             params.append(status_filter)
 
         if shipment_status_filter and shipment_status_filter.lower() != "all":
-            conditions.append("s.status = %s")
+            conditions.append("s.status = $" + str(len(params) + 1))
             params.append(shipment_status_filter)
 
         if start_date:
-            conditions.append("CAST(o.order_date AS DATE) >= %s")
+            conditions.append("o.order_date::DATE >= $" + str(len(params) + 1))
             params.append(start_date)
 
         if end_date:
-            conditions.append("CAST(o.order_date AS DATE) <= %s")
+            conditions.append("o.order_date::DATE <= $" + str(len(params) + 1))
             params.append(end_date)
 
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
 
         query += " ORDER BY o.order_date DESC"
-        cursor.execute(query, tuple(params))
+        cursor.execute(query, params)
         orders = cursor.fetchall()
 
         order_data = []
@@ -641,7 +644,6 @@ def admin_orders():
         start_date=start_date,
         end_date=end_date
     )
-
 
 from flask import request, make_response
 from io import BytesIO
@@ -1185,52 +1187,72 @@ def send_order_confirmation_email(to_email, subject, body):
 
 
 
+import random
+import smtplib
+from flask import render_template, request, redirect, url_for, flash, session
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
 @app.route("/forgot_password", methods=["GET", "POST"])
 def forgot_password():
     if request.method == "POST":
-        email = request.form["email"]
+        email = request.form.get("email", "").strip()
+
+        if not email:
+            flash("Please enter your email.", "danger")
+            return render_template("forgot_password.html")
 
         conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id FROM customers WHERE email = ?", (email,))
-        user = cursor.fetchone()
-        
-        if user:
-            otp = str(random.randint(100000, 999999))
+        if conn is None:
+            flash("Database connection error.", "danger")
+            return render_template("forgot_password.html")
 
-            # Store OTP in session
-            session["otp_data"] = {
-                "email": email,
-                "otp": otp,
-                "customer_id": user[0]
-            }
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM customers WHERE email = %s", (email,))
+            user = cursor.fetchone()
 
-            # Send email with OTP
-            subject = "Sri Birundha Textiles - OTP for Password Reset"
-            body = f"Your OTP for password reset is: {otp}"
+            if user:
+                otp = str(random.randint(100000, 999999))
 
-            sender_email = "birundhatextiles@gmail.com"
-            sender_password = "dzqf jank cyee wrod"
-            receiver_email = email
+                # Store OTP in session
+                session["otp_data"] = {
+                    "email": email,
+                    "otp": otp,
+                    "customer_id": user[0]
+                }
 
-            msg = MIMEMultipart()
-            msg["From"] = sender_email
-            msg["To"] = receiver_email
-            msg["Subject"] = subject
-            msg.attach(MIMEText(body, "plain"))
+                # Send email with OTP
+                subject = "Sri Birundha Textiles - OTP for Password Reset"
+                body = f"Your OTP for password reset is: {otp}"
 
-            try:
-                with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-                    server.login(sender_email, sender_password)
-                    server.send_message(msg)
-                flash("OTP has been sent to your email.", "success")
-                return redirect(url_for("verify_otp_reset"))
-            except Exception as e:
-                print("Email error:", e)
-                flash("Failed to send OTP email.", "danger")
-        else:
-            flash("No account found with this email.", "danger")
-    
+                sender_email = "birundhatextiles@gmail.com"
+                sender_password = "dzqf jank cyee wrod"  # Consider moving this to env variables
+                receiver_email = email
+
+                msg = MIMEMultipart()
+                msg["From"] = sender_email
+                msg["To"] = receiver_email
+                msg["Subject"] = subject
+                msg.attach(MIMEText(body, "plain"))
+
+                try:
+                    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+                        server.login(sender_email, sender_password)
+                        server.send_message(msg)
+                    flash("OTP has been sent to your email.", "success")
+                    return redirect(url_for("verify_otp_reset"))
+                except Exception as e:
+                    print("Email error:", e)
+                    flash("Failed to send OTP email.", "danger")
+            else:
+                flash("No account found with this email.", "danger")
+        except Exception as e:
+            print("Database error:", e)
+            flash("Something went wrong. Please try again later.", "danger")
+        finally:
+            conn.close()
+
     return render_template("forgot_password.html")
 @app.route("/verify_otp_reset", methods=["GET", "POST"])
 def verify_otp_reset():
@@ -1241,9 +1263,9 @@ def verify_otp_reset():
         return redirect(url_for("forgot_password"))
 
     if request.method == "POST":
-        entered_otp = request.form.get("otp")
-        new_password = request.form.get("password")
-        confirm_password = request.form.get("confirm_password")
+        entered_otp = request.form.get("otp", "").strip()
+        new_password = request.form.get("password", "").strip()
+        confirm_password = request.form.get("confirm_password", "").strip()
 
         if entered_otp != otp_data["otp"]:
             flash("❌ Incorrect OTP. Please try again.", "danger")
@@ -1253,19 +1275,30 @@ def verify_otp_reset():
             flash("❗ Passwords do not match.", "danger")
             return render_template("verify_otp_route.html")
 
-        # Hash the password (recommended)
+        # Hash the new password
         hashed_password = generate_password_hash(new_password)
 
-        # Update password in DB
         conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("UPDATE customers SET password = ? WHERE email = ?", (hashed_password, otp_data["email"]))
-        conn.commit()
-        conn.close()
+        if conn is None:
+            flash("Database connection error.", "danger")
+            return render_template("verify_otp_route.html")
 
-        session.pop("otp_data", None)
-        flash("✅ Password has been reset successfully!", "success")
-        return redirect(url_for("login"))
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE customers SET password = %s WHERE email = %s",
+                (hashed_password, otp_data["email"])
+            )
+            conn.commit()
+            flash("✅ Password has been reset successfully!", "success")
+            session.pop("otp_data", None)
+            return redirect(url_for("login"))
+        except Exception as e:
+            conn.rollback()
+            print("Database error:", e)
+            flash("Something went wrong while resetting your password.", "danger")
+        finally:
+            conn.close()
 
     return render_template("verify_otp_route.html")
 @app.route('/track', methods=['GET', 'POST'])
@@ -1277,13 +1310,20 @@ def track_order():
     cursor = None
 
     if request.method == 'POST':
-        tracking_number = request.form.get('tracking_number')
+        tracking_number = request.form.get('tracking_number', '').strip()
+
+        if not tracking_number:
+            error = "Please enter a tracking number."
+            return render_template('track.html', tracking_info=tracking_info, error=error)
 
         try:
             conn = get_db_connection()
+            if conn is None:
+                raise Exception("Database connection failed.")
+
             cursor = conn.cursor()
 
-            query = "SELECT status, estimated_delivery FROM shipments WHERE tracking_number = ?"
+            query = "SELECT status, estimated_delivery FROM shipments WHERE tracking_number = %s"
             cursor.execute(query, (tracking_number,))
             row = cursor.fetchone()
 
@@ -1440,7 +1480,9 @@ def delete_customer(id):
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM customers WHERE id = ?", (id,))
+    cursor.execute("DELETE FROM customers WHERE id = %s",
+    (id,)
+)
     conn.commit()
     conn.close()
 
@@ -1600,9 +1642,11 @@ def remove_from_cart(product_id):
 
 @app.route('/offline_orders', methods=['GET', 'POST'])
 def offline_orders():
+    # Establish a connection to PostgreSQL
     conn = get_db_connection()
     cursor = conn.cursor()
 
+    # Handle POST request for placing an order
     if request.method == 'POST' and 'product_id[]' in request.form:
         product_ids = request.form.getlist('product_id[]')
         quantities = request.form.getlist('quantity[]')
@@ -1611,13 +1655,15 @@ def offline_orders():
         total_order_price = 0
         order_group_id = str(uuid.uuid4())  # Unique ID for the order group
 
+        # Loop through the selected products and quantities
         for i in range(len(product_ids)):
             product_id = product_ids[i]
             quantity = int(quantities[i])
 
-            # Get product name, price and current pieces
-            cursor.execute("SELECT name, price, pieces FROM products WHERE id = ?", (product_id,))
+            # Get product details (name, price, and available pieces)
+            cursor.execute("SELECT name, price, pieces FROM products WHERE id = %s", (product_id,))
             product = cursor.fetchone()
+
             if not product:
                 flash("Invalid product selected!", "danger")
                 return redirect(url_for('offline_orders'))
@@ -1626,37 +1672,38 @@ def offline_orders():
             total = price * quantity
             total_order_price += total
 
-            # Update pieces in products table
+            # Check if enough pieces are available
             new_pieces = current_pieces - quantity
             if new_pieces < 0:
                 flash(f"Not enough pieces available for {name}. Only {current_pieces} left.", "danger")
                 return redirect(url_for('offline_orders'))
 
+            # Update the available stock in the products table
             cursor.execute("UPDATE products SET pieces = %s WHERE id = %s", (new_pieces, product_id))
 
-
-            # Insert into offline_orders table
+            # Insert the order details into the offline_orders table
             cursor.execute(""" 
                 INSERT INTO offline_orders (product_id, quantity, total_price, order_date, order_group_id)
-                VALUES (?, ?, ?, ?, ?)""",
+                VALUES (%s, %s, %s, %s, %s)""",
                 (product_id, quantity, total, datetime.now(), order_group_id)
             )
 
+        # Commit the changes to the database
         conn.commit()
         flash("Order placed successfully!", "success")
 
-    # Fetch product data for the form
+    # Fetch the list of products for the form
     cursor.execute("SELECT id, name, price FROM products")
     products = cursor.fetchall()
 
-    # 🔍 Handle search by order_group_id
+    # 🔍 Handle search by order_group_id in the query parameters
     search_group_id = request.args.get('search')
     if search_group_id:
         cursor.execute(""" 
             SELECT o.id, o.product_id, o.quantity, o.total_price, o.order_date, o.order_group_id, p.name 
             FROM offline_orders o
             JOIN products p ON o.product_id = p.id
-            WHERE o.order_group_id = ?
+            WHERE o.order_group_id = %s
             ORDER BY o.order_date DESC
         """, (search_group_id,))
     else:
@@ -1667,12 +1714,14 @@ def offline_orders():
             ORDER BY o.order_date DESC
         """)
 
+    # Fetch the list of orders based on the search condition (if any)
     orders = cursor.fetchall()
 
-    # Fetch total value of all orders
+    # Fetch the total value of all orders
     cursor.execute("SELECT SUM(total_price) FROM offline_orders")
     total_value = cursor.fetchone()[0] or 0
 
+    # Close the cursor and the connection
     cursor.close()
     conn.close()
 
@@ -1680,38 +1729,64 @@ def offline_orders():
     return render_template('orders.html', products=products, orders=orders, total_value=total_value)
 
 
-
 @app.route('/print_invoice/<int:order_id>')
 def print_invoice(order_id):
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # Modify the query to fetch order_group_id along with other order details
+    # Fetch the order_group_id for the given order_id
     cursor.execute("""
-        SELECT o.quantity, o.total_price, o.order_date, p.name, p.price, o.order_group_id
+        SELECT o.order_group_id
         FROM offline_orders o
-        JOIN products p ON o.product_id = p.id
-        WHERE o.id = ?
+        WHERE o.id = %s
     """, (order_id,))
-    order = cursor.fetchone()
-    cursor.close()
-    conn.close()
+    order_group_id = cursor.fetchone()
 
-    if not order:
+    if not order_group_id:
         flash("Order not found!", "danger")
         return redirect(url_for('offline_orders'))
 
-    # Extracting the values, including order_group_id
-    quantity, total_price, order_date, product_name, unit_price, order_group_id = order
+    order_group_id = order_group_id[0]  # Extract order_group_id from the tuple
 
-    # Passing the order_group_id to the template
+    # Fetch all orders in the same order_group_id
+    cursor.execute("""
+        SELECT o.quantity, o.total_price, o.order_date, p.name, p.price
+        FROM offline_orders o
+        JOIN products p ON o.product_id = p.id
+        WHERE o.order_group_id = %s
+        ORDER BY o.order_date DESC
+    """, (order_group_id,))  # Correct parameter placeholder
+
+    orders = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    if not orders:
+        flash("No orders found for this group!", "danger")
+        return redirect(url_for('offline_orders'))
+
+    # Prepare the data to pass to the template
+    order_details = []
+    total_price = 0
+
+    for order in orders:
+        quantity, total_price_order, order_date, product_name, unit_price = order
+        total_price += total_price_order  # Calculate total price for the group
+
+        order_details.append({
+            'product_name': product_name,
+            'quantity': quantity,
+            'unit_price': unit_price,
+            'total_price': total_price_order,
+            'order_date': order_date
+        })
+
+    # Passing order details and total price to the template
     return render_template('print_invoice.html',
-                           product_name=product_name,
-                           quantity=quantity,
-                           price=unit_price,
+                           order_details=order_details,
                            total_price=total_price,
-                           order_date=order_date,
                            order_group_id=order_group_id)
+
 
 @app.route("/checkout", methods=["GET", "POST"])
 def checkout():
@@ -1846,46 +1921,6 @@ def checkout():
 
 
 
-from werkzeug.security import generate_password_hash, check_password_hash
-def process_deliveries():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        SELECT s.id, s.order_id, c.email
-FROM shipments s
-JOIN orders o ON s.order_id = o.id
-JOIN customers c ON o.customer_id = c.id
-WHERE s.estimated_delivery::date = CURRENT_DATE
-AND s.status != 'Delivered';
-
-    """)
-    deliveries_today = cursor.fetchall()
-
-    for shipment_id, order_id, email in deliveries_today:
-        subject = "Your Order Has Been Delivered"
-        body = f"Hello,\n\nYour order with tracking number TRK{order_id}{shipment_id} has been delivered today.\n\nThank you for shopping with us!"
-        sender_email = "birundhatextiles@gmail.com"
-        sender_password = "dzqf jank cyee wrod"
-        receiver_email = email
-
-        msg = MIMEMultipart()
-        msg["From"] = sender_email
-        msg["To"] = receiver_email
-        msg["Subject"] = subject
-        msg.attach(MIMEText(body, "plain"))
-
-        try:
-            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-                server.login(sender_email, sender_password)
-                server.send_message(msg)
-            print(f"[✅] Email sent to {receiver_email}")
-        except Exception as e:
-            print(f"[❌] Email error for {receiver_email}: {e}")
-
-        cursor.execute("UPDATE shipments SET status = 'Delivered' WHERE id = ?", (shipment_id,))
-        conn.commit()
-
 
 @app.route("/profile", methods=["GET", "POST"])
 def profile():
@@ -1897,7 +1932,7 @@ def profile():
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, name, email, phone FROM customers WHERE id = ?", (user_id,))
+    cursor.execute("SELECT id, name, email, phone FROM customers WHERE id = %s", (user_id,))
     user = cursor.fetchone()
     conn.close()
 
@@ -1905,7 +1940,7 @@ def profile():
         flash("User not found!", "danger")
         return redirect(url_for("home"))
 
-    return render_template("profile.html", user=user)  # Pass full user data
+    return render_template("profile.html", user=user)
 
 
 @app.route("/edit_profile", methods=["POST"])
@@ -1915,18 +1950,29 @@ def edit_profile():
         return redirect(url_for("login"))
 
     user_id = session["user_id"]
-    name = request.form["name"]
-    email = request.form["email"]
-    phone = request.form["phone"]
+    name = request.form.get("name", "").strip()
+    email = request.form.get("email", "").strip()
+    phone = request.form.get("phone", "").strip()
+
+    if not name or not email or not phone:
+        flash("All fields are required.", "danger")
+        return redirect(url_for("profile"))
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("UPDATE customers SET name = ?, email = ?, phone = ? WHERE id = ?", 
-                   (name, email, phone, user_id))
-    conn.commit()
-    conn.close()
+    try:
+        cursor.execute(
+            "UPDATE customers SET name = %s, email = %s, phone = %s WHERE id = %s",
+            (name, email, phone, user_id)
+        )
+        conn.commit()
+        flash("Profile updated successfully!", "success")
+    except Exception:
+        conn.rollback()
+        flash("Failed to update profile.", "danger")
+    finally:
+        conn.close()
 
-    flash("Profile updated successfully!", "success")
     return redirect(url_for("profile"))
 
 
@@ -1937,42 +1983,43 @@ def change_password():
         return redirect(url_for("login"))
 
     user_id = session["user_id"]
-    old_password = request.form["old_password"]
-    new_password = request.form["new_password"]
+    old_password = request.form.get("old_password", "")
+    new_password = request.form.get("new_password", "")
+
+    if not old_password or not new_password:
+        flash("All fields are required.", "danger")
+        return redirect(url_for("profile"))
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT password FROM customers WHERE id = ?", (user_id,))
-    user = cursor.fetchone()
-    
-    if not user:
-        flash("User not found!", "danger")
-        conn.close()
+    try:
+        cursor.execute("SELECT password FROM customers WHERE id = %s", (user_id,))
+        user = cursor.fetchone()
+
+        if not user:
+            flash("User not found!", "danger")
+            return redirect(url_for("profile"))
+
+        stored_password = user[0]
+        hashed_old_password = hashlib.sha256(old_password.encode()).hexdigest()
+
+        if stored_password == hashed_old_password or check_password_hash(stored_password, old_password):
+            hashed_new_password = generate_password_hash(new_password)
+            cursor.execute("UPDATE customers SET password = %s WHERE id = %s", (hashed_new_password, user_id))
+            conn.commit()
+
+            session.pop("user_id", None)
+            session.pop("role", None)
+            flash("Password updated successfully! Please log in again.", "success")
+            return redirect(url_for("login"))
+        else:
+            flash("Incorrect current password!", "danger")
+            return redirect(url_for("profile"))
+
+    except Exception:
+        conn.rollback()
+        flash("Failed to change password.", "danger")
         return redirect(url_for("profile"))
-
-    stored_password = user[0]
-
-    # ✅ Check both SHA256 and Werkzeug hashed passwords
-    hashed_old_password = hashlib.sha256(old_password.encode()).hexdigest()
-
-    if stored_password == hashed_old_password or check_password_hash(stored_password, old_password):
-        # ✅ Update password with Werkzeug hashing
-        hashed_new_password = generate_password_hash(new_password)
-
-        cursor.execute("UPDATE customers SET password = ? WHERE id = ?", (hashed_new_password, user_id))
-        conn.commit()
-        conn.close()
-
-        # ✅ Log out user after changing password
-        session.pop("user_id", None)
-        session.pop("role", None)
-        flash("Password updated successfully! Please log in again.", "success")
-        return redirect(url_for("login"))
-    else:
-        flash("Incorrect current password!", "danger")
-        conn.close()
-        return redirect(url_for("profile"))
-
 
 @app.route("/view_orders")
 def view_orders():
@@ -1989,34 +2036,38 @@ def view_orders():
     cursor = conn.cursor()
 
     query = """
-        SELECT o.id, o.order_date, o.total_price, o.status, 
-               p.name, p.image_url, oi.quantity, oi.price,
-               s.tracking_number, s.estimated_delivery, s.status AS shipment_status,
-               a.payment_status,
-               c.address AS customer_address  -- ✅ Address from customers table
-        FROM orders o
-        JOIN order_items oi ON o.id = oi.order_id
-        JOIN products p ON oi.product_id = p.id
-        LEFT JOIN shipments s ON o.id = s.order_id
-        LEFT JOIN accounts a ON o.id = a.order_id AND a.customer_id = o.customer_id
-        JOIN customers c ON o.customer_id = c.id  -- ✅ Join with customers table
-        WHERE o.customer_id = ?
+    SELECT o.id, o.order_date, o.total_price, o.status, 
+           p.name, p.image_url, oi.quantity, oi.price,
+           s.tracking_number, s.estimated_delivery, s.status AS shipment_status,
+           a.payment_status,
+           c.address AS customer_address
+    FROM orders o
+    JOIN order_items oi ON o.id = oi.order_id
+    JOIN products p ON oi.product_id = p.id
+    LEFT JOIN shipments s ON o.id = s.order_id
+    LEFT JOIN accounts a ON o.id = a.order_id AND a.customer_id = o.customer_id
+    JOIN customers c ON o.customer_id = c.id
+    WHERE o.customer_id = %s
     """
     params = [user_id]
 
     if status_filter:
-        query += " AND o.status = ?"
+        query += " AND o.status = %s"
         params.append(status_filter)
 
     if start_date and end_date:
-        query += " AND o.order_date BETWEEN ? AND ?"
+        query += " AND o.order_date BETWEEN %s AND %s"
         params.extend([start_date, end_date])
+
+    query += " ORDER BY o.order_date DESC"  # Optional: to show recent orders first
 
     cursor.execute(query, tuple(params))
     orders = cursor.fetchall()
     conn.close()
 
     return render_template("view_orders.html", orders=orders)
+
+
 
 
 
@@ -2032,16 +2083,17 @@ def cancel_order(order_id):
     cursor = conn.cursor()
     
     # Ensure the order belongs to the logged-in user
-    cursor.execute("SELECT id, order_date, total_price, status FROM orders WHERE customer_id = ?", (user_id,))
+    cursor.execute("SELECT id, order_date, total_price, status FROM orders WHERE customer_id = %s AND id = %s", (user_id, order_id))
 
     order = cursor.fetchone()
 
     if not order:
         flash("Order not found!", "danger")
-    elif order[0] == "Cancelled":
+    elif order[3] == "Cancelled":
         flash("Order is already cancelled!", "info")
     else:
-        cursor.execute("UPDATE orders SET status = 'Cancelled' WHERE id = ?", (order_id,))
+        cursor.execute("UPDATE orders SET status = 'Cancelled' WHERE id = %s", (order_id,))
+
         conn.commit()
         flash("Order cancelled successfully!", "success")
 
@@ -2054,7 +2106,7 @@ def admin_employees():
         return redirect(url_for("login"))
 
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     if request.method == "POST":
         name = request.form["name"]
@@ -2067,41 +2119,44 @@ def admin_employees():
             filename = secure_filename(file.filename)
             filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
             file.save(filepath)
-            image_url = f"static/uploads/{filename}"
+            image_url = f"uploads/{filename}"  # Path relative to 'static' folder
         else:
-            image_url = "static/uploads/default.png"
+            image_url = "uploads/default.png"
 
-        # Step 1: Insert new employee without emp_number
+        # Insert new employee and return emp_id
         cursor.execute(
-            "INSERT INTO employees (name, age, contact_number, salary, image_url) OUTPUT INSERTED.emp_id VALUES (?, ?, ?, ?, ?);",
+            "INSERT INTO employees (name, age, contact_number, salary, image_url) VALUES (%s, %s, %s, %s, %s) RETURNING emp_id;",
             (name, age, contact_number, salary, image_url),
         )
-        emp_id = cursor.fetchone()[0]  # Retrieve last inserted emp_id
+        emp_id = cursor.fetchone()['emp_id']
         emp_number = f"BITX{emp_id}"
 
-        # Step 2: Update emp_number for the inserted employee
-        cursor.execute("UPDATE employees SET emp_number = ? WHERE emp_id = ?", (emp_number, emp_id))
+        # Update emp_number
+        cursor.execute("UPDATE employees SET emp_number = %s WHERE emp_id = %s;", (emp_number, emp_id))
         conn.commit()
 
         flash("Employee added successfully!", "success")
 
     # Fetch all employees
-    cursor.execute("SELECT emp_id, name, age, contact_number, salary, image_url, emp_number FROM employees ORDER BY emp_id DESC")
+    cursor.execute("SELECT emp_id, name, age, contact_number, salary, image_url, emp_number FROM employees ORDER BY emp_id DESC;")
     employees = cursor.fetchall()
     conn.close()
 
-    # Determine the next emp_number based on the last employee
-    next_emp_number = f"BXTX{employees[0].emp_id + 1}" if employees else "BXTX1"
+    # Determine the next emp_number
+    next_emp_number = f"BXTX{employees[0]['emp_id'] + 1}" if employees else "BXTX1"
 
     return render_template("employees.html", employees=employees, emp_number=next_emp_number)
-
 @app.route("/admin/employees/edit/<int:emp_id>", methods=["GET", "POST"])
 def edit_employee(emp_id):
+    if session.get("role") != "admin":
+        flash("Unauthorized access!", "danger")
+        return redirect(url_for("login"))
+
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     # Fetch existing employee details
-    cursor.execute("SELECT * FROM employees WHERE emp_id = ?", (emp_id,))
+    cursor.execute("SELECT * FROM employees WHERE emp_id = %s", (emp_id,))
     employee = cursor.fetchone()
 
     if not employee:
@@ -2123,12 +2178,12 @@ def edit_employee(emp_id):
             file.save(filepath)
             image_url = f"static/uploads/{filename}"  # Store relative path
         else:
-            image_url = employee.image_url  # Keep the existing image if no new file uploaded
+            image_url = employee['image_url']  # Keep the existing image if no new file uploaded
 
         cursor.execute("""
             UPDATE employees 
-            SET name = ?, age = ?, contact_number = ?, salary = ?, image_url = ? 
-            WHERE emp_id = ?
+            SET name = %s, age = %s, contact_number = %s, salary = %s, image_url = %s 
+            WHERE emp_id = %s
         """, (name, age, contact_number, salary, image_url, emp_id))
 
         conn.commit()
@@ -2138,12 +2193,14 @@ def edit_employee(emp_id):
         return redirect(url_for("admin_employees"))
 
     conn.close()
-    return render_template("edit_employee.html", employee=employee)
+    return render_template("edit_employee.html", employee=employee)   
+
 @app.route("/admin/employees/delete/<int:emp_id>", methods=["POST"])
 def delete_employee(emp_id):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM employees WHERE emp_id = ?", (emp_id,))
+    cursor.execute("DELETE FROM employees WHERE emp_id = %s", (emp_id,))
+
     conn.commit()
     conn.close()
     return redirect(url_for("admin_employees"))
@@ -2151,8 +2208,11 @@ def delete_employee(emp_id):
 @app.route('/admin/suppliers')
 def admin_suppliers():
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, 'BITXSN' + CAST(id AS VARCHAR) AS supplier_number, name, contact, email, address FROM Suppliers")
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)  # 👈 important
+    cursor.execute("""
+        SELECT id, 'BITXSN' || id::VARCHAR AS supplier_number, name, contact, email, address 
+        FROM Suppliers
+    """)
     suppliers = cursor.fetchall()
     conn.close()
     return render_template('admin_suppliers.html', suppliers=suppliers)
@@ -2170,7 +2230,7 @@ def add_supplier():
         cursor = conn.cursor()
 
         # 🔹 Get the next ID for supplier
-        cursor.execute("SELECT ISNULL(MAX(id), 0) + 1 FROM Suppliers")
+        cursor.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM Suppliers")
         next_id = cursor.fetchone()[0]
 
         # 🔹 Generate supplier_number as BITXSN + ID
@@ -2179,7 +2239,7 @@ def add_supplier():
         # 🔹 Insert into database
         cursor.execute("""
             INSERT INTO Suppliers (supplier_number, name, contact, email, address) 
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s)
         """, (supplier_number, name, contact, email, address))
 
         conn.commit()
@@ -2195,7 +2255,8 @@ def add_supplier():
 def edit_supplier(id):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM Suppliers WHERE id=?", (id,))
+    cursor.execute("SELECT * FROM Suppliers WHERE id=%s", (id,))
+
     supplier = cursor.fetchone()
 
     if not supplier:
@@ -2208,8 +2269,11 @@ def edit_supplier(id):
         email = request.form['email']
         address = request.form['address']
 
-        cursor.execute("UPDATE Suppliers SET name=?, contact=?, email=?, address=? WHERE id=?",
-                       (name, contact, email, address, id))
+        cursor.execute(
+    "UPDATE Suppliers SET name=%s, contact=%s, email=%s, address=%s WHERE id=%s",
+    (name, contact, email, address, id)
+)
+
         conn.commit()
         conn.close()
 
@@ -2225,14 +2289,19 @@ def delete_supplier(id):
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    cursor.execute("SELECT * FROM Suppliers WHERE id=?", (id,))
+    cursor.execute(
+    "SELECT * FROM suppliers WHERE id = %s",
+    (id,)
+)
+
     supplier = cursor.fetchone()
 
     if not supplier:
         flash("Supplier not found!", "danger")
         return redirect(url_for('admin_suppliers'))
 
-    cursor.execute("DELETE FROM Suppliers WHERE id=?", (id,))
+    cursor.execute("DELETE FROM Suppliers WHERE id=%s", (id,))
+
     conn.commit()
     conn.close()
 
@@ -2247,8 +2316,9 @@ def supplier_login():
 
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT supplier_number FROM Suppliers WHERE supplier_number=? AND contact=?", 
-                       (supplier_number, contact))
+        cursor.execute("SELECT supplier_number FROM Suppliers WHERE supplier_number = %s AND contact = %s", 
+               (supplier_number, contact))
+
         supplier = cursor.fetchone()
         conn.close()
 
@@ -2300,10 +2370,10 @@ def add_supplier_item():
         # Save item in database
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO SupplierGoods (supplier_number, shop_name, shop_address, contact, item_name, item_quantity, item_value, photo_url, video_url)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (supplier_number, shop_name, shop_address, contact, item_name, item_quantity, item_value, photo_filename, video_filename))
+        cursor.execute("""INSERT INTO Supplier_goods (supplier_number, shop_name, shop_address, contact, item_name, item_quantity, item_value, photo_url, video_url)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+""", (supplier_number, shop_name, shop_address, contact, item_name, item_quantity, item_value, photo_filename, video_filename))
+
         conn.commit()
         conn.close()
 
@@ -2311,79 +2381,113 @@ def add_supplier_item():
         return redirect(url_for('supplier_goods'))
 
     return render_template('add_supplier_item.html')
-
-@app.route('/supplier_goods')
+@app.route("/supplier_goods")
 def supplier_goods():
+    if "supplier_number" not in session:
+        flash("Please log in first!", "warning")
+        return redirect(url_for("supplier_login"))
+
+    conn = get_db_connection()
+    if conn is None:
+        flash("Database unavailable; please try again later.", "danger")
+        return redirect(url_for("supplier_login"))
+
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cursor.execute(
+        "SELECT * FROM supplier_goods "
+        "WHERE supplier_number = %s "
+        "ORDER BY id DESC",
+        (session["supplier_number"],)
+    )
+    items = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    return render_template("supplier_goods.html", items=items)
+
+@app.route('/edit_supplier_goods/<int:item_id>', methods=['GET', 'POST'])
+def edit_supplier_goods(item_id):
     if 'supplier_number' not in session:
         flash("Please log in first!", "warning")
         return redirect(url_for('supplier_login'))
 
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM SupplierGoods WHERE supplier_number=?", (session['supplier_number'],))
-    items = cursor.fetchall()
-    conn.close()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    return render_template('supplier_goods.html', items=items)# Order success page
-@app.route('/edit_supplier_goods/<int:item_id>', methods=['GET', 'POST'])
-def edit_supplier_goods(item_id):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # Fetch existing item
-    cursor.execute("SELECT * FROM SupplierGoods WHERE id = ?", (item_id,))
+    # Fetch only this supplier's item
+    cursor.execute("""
+        SELECT * FROM supplier_goods
+         WHERE id = %s AND supplier_number = %s
+    """, (item_id, session['supplier_number']))
     item = cursor.fetchone()
 
     if not item:
+        cursor.close()
+        conn.close()
         flash("Item not found!", "danger")
         return redirect(url_for('supplier_goods'))
 
     if request.method == 'POST':
-        shop_name = request.form['shop_name']
-        shop_address = request.form['shop_address']
-        contact = request.form['contact']
-        item_name = request.form['item_name']
-        item_quantity = request.form['item_quantity']
-        item_value = request.form['item_value']
-        photo_url = item[6]  # Keep old photo if new one is not uploaded
-        video_url = item[7]  # Keep old video if new one is not uploaded
+        # Form fields (fallback to existing values)
+        shop_name     = request.form.get('shop_name',    item['shop_name'])
+        shop_address  = request.form.get('shop_address', item['shop_address'])
+        contact       = request.form.get('contact',      item['contact'])
+        item_name     = request.form.get('item_name',    item['item_name'])
+        item_quantity = request.form.get('item_quantity',item['item_quantity'])
+        item_value    = request.form.get('item_value',   item['item_value'])
 
-        # Handle photo upload
-        if 'photo' in request.files and request.files['photo'].filename:
-            photo = request.files['photo']
-            if allowed_file(photo.filename):  # Ensure allowed file formats
-                photo_filename = secure_filename(photo.filename)
-                photo_path = os.path.join(app.config['UPLOAD_FOLDER'], photo_filename)
-                photo.save(photo_path)
-                photo_url = photo_filename  # Update new photo filename in DB
-            else:
-                flash("Invalid photo format!", "danger")
+        # Handle uploads
+        photo_file = request.files.get('photo')
+        video_file = request.files.get('video')
+        photo_url  = save_file(photo_file) or item['photo_url']
+        video_url  = save_file(video_file) or item['video_url']
 
-        # Handle video upload
-        if 'video' in request.files and request.files['video'].filename:
-            video = request.files['video']
-            if allowed_file(video.filename):  # Ensure allowed file formats
-                video_filename = secure_filename(video.filename)
-                video_path = os.path.join(app.config['UPLOAD_FOLDER'], video_filename)
-                video.save(video_path)
-                video_url = video_filename  # Update new video filename in DB
-            else:
-                flash("Invalid video format!", "danger")
-
-        # Update item in database
+        # Update
         cursor.execute("""
-            UPDATE SupplierGoods 
-            SET shop_name=?, shop_address=?, contact=?, item_name=?, item_quantity=?, item_value=?, photo_url=?, video_url=? 
-            WHERE id=?
-        """, (shop_name, shop_address, contact, item_name, item_quantity, item_value, photo_url, video_url, item_id))
-
+            UPDATE supplier_goods
+               SET shop_name    = %s,
+                   shop_address = %s,
+                   contact      = %s,
+                   item_name    = %s,
+                   item_quantity= %s,
+                   item_value   = %s,
+                   photo_url    = %s,
+                   video_url    = %s
+             WHERE id = %s AND supplier_number = %s
+        """, (
+            shop_name, shop_address, contact,
+            item_name, item_quantity, item_value,
+            photo_url, video_url,
+            item_id, session['supplier_number']
+        ))
         conn.commit()
+
+        cursor.close()
         conn.close()
         flash("Item updated successfully!", "success")
         return redirect(url_for('supplier_goods'))
 
+    # GET: render edit form
+    cursor.close()
     conn.close()
     return render_template('edit_supplier_goods.html', item=item)
+
+
+def save_file(file_storage):
+    """
+    Save an uploaded file to app.config['UPLOAD_FOLDER'].
+    Return the filename on success, or None otherwise.
+    """
+    if not file_storage or file_storage.filename == '':
+        return None
+
+    if not allowed_file(file_storage.filename):
+        return None
+
+    filename = secure_filename(file_storage.filename)
+    upload_path = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+    file_storage.save(upload_path)
+    return filename
 
 
 @app.route('/delete_supplier_goods/<int:item_id>', methods=['POST'])
@@ -2440,6 +2544,46 @@ def admin_shipments():
     conn.close()
 
     return render_template("admin_shipments.html", shipments=shipments)
+def process_deliveries():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT s.id, s.order_id, c.email
+        FROM shipments s
+        JOIN orders o ON s.order_id = o.id
+        JOIN customers c ON o.customer_id = c.id
+        WHERE s.estimated_delivery::date = CURRENT_DATE
+        AND s.status != 'Delivered';
+    """)
+    deliveries_today = cursor.fetchall()
+
+    for shipment_id, order_id, email in deliveries_today:
+        subject = "Your Order Has Been Delivered"
+        body = f"Hello,\n\nYour order with tracking number TRK{order_id}{shipment_id} has been delivered today.\n\nThank you for shopping with us!"
+        sender_email = "birundhatextiles@gmail.com"
+        sender_password = "your_app_specific_password"  # Replace with your actual app-specific password
+        receiver_email = email
+
+        msg = MIMEMultipart()
+        msg["From"] = sender_email
+        msg["To"] = receiver_email
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body, "plain"))
+
+        try:
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+                server.login(sender_email, sender_password)
+                server.send_message(msg)
+            print(f"[✅] Email sent to {receiver_email}")
+        except Exception as e:
+            print(f"[❌] Email error for {receiver_email}: {e}")
+
+        cursor.execute("UPDATE shipments SET status = 'Delivered' WHERE id = %s;", (shipment_id,))
+        conn.commit()
+
+    cursor.close()
+    conn.close()
 
 
 @app.route("/order_success/<int:order_id>")
