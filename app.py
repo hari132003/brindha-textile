@@ -1554,7 +1554,8 @@ def delete_product(id):
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    cursor.execute("DELETE FROM products WHERE id = ?", (id,))
+    cursor.execute("DELETE FROM products WHERE id = %s", (id,))
+
     conn.commit()
     conn.close()
 
@@ -2225,34 +2226,68 @@ def admin_suppliers():
 @app.route('/suppliers/add', methods=['GET', 'POST'])
 def add_supplier():
     if request.method == 'POST':
+        # Get data from form
         name = request.form['name']
         contact = request.form['contact']
         email = request.form['email']
         address = request.form['address']
 
+        # Validate fields (basic checks for empty values)
+        if not name or not contact or not email or not address:
+            flash("All fields are required!", "danger")
+            return redirect(url_for('add_supplier'))  # Stay on the same page if validation fails
+
+        # Connect to database
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # 🔹 Get the next ID for supplier
-        cursor.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM Suppliers")
-        next_id = cursor.fetchone()[0]
+        try:
+            # 🔹 Get the next ID for supplier
+            cursor.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM Suppliers")
+            next_id = cursor.fetchone()[0]
 
-        # 🔹 Generate supplier_number as BITXSN + ID
-        supplier_number = f"BITXSN{next_id}"
+            # 🔹 Generate supplier_number as BITXSN + ID
+            supplier_number = f"BITXSN{next_id}"
 
-        # 🔹 Insert into database
-        cursor.execute("""
-            INSERT INTO Suppliers (supplier_number, name, contact, email, address) 
-            VALUES (%s, %s, %s, %s, %s)
-        """, (supplier_number, name, contact, email, address))
+            # 🔹 Insert into database
+            cursor.execute("""
+                INSERT INTO Suppliers (supplier_number, name, contact, email, address) 
+                VALUES (%s, %s, %s, %s, %s)
+            """, (supplier_number, name, contact, email, address))
 
-        conn.commit()
-        conn.close()
+            conn.commit()
+            flash("Supplier added successfully!", "success")
+            return redirect(url_for('admin_suppliers'))  # Redirect to suppliers list page after adding
 
-        flash("Supplier added successfully!", "success")
+        except Exception as e:
+            # Handle any database-related errors
+            conn.rollback()
+            flash(f"Error adding supplier: {str(e)}", "danger")
+
+        finally:
+            # Clean up
+            cursor.close()
+            conn.close()
+
+    # Render the form for adding a new supplier
+    return render_template('supplier_form.html', action="Add")
+@app.route('/suppliers/<int:supplier_id>', methods=['GET'])
+def show_supplier(supplier_id):
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    # Fetch supplier details
+    cursor.execute("SELECT * FROM Suppliers WHERE id = %s", (supplier_id,))
+    supplier = cursor.fetchone()
+
+    cursor.close()
+    conn.close()
+
+    if not supplier:
+        flash("Supplier not found!", "danger")
         return redirect(url_for('admin_suppliers'))
 
-    return render_template('supplier_form.html', action="Add")
+    return render_template('supplier_details.html', supplier=supplier)
 
 # 🟢 Edit a Supplier
 @app.route('/suppliers/edit/<int:id>', methods=['GET', 'POST'])
