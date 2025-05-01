@@ -542,7 +542,10 @@ def admin_orders():
 
         # ✅ Update payment status
         if update_payment_id and new_payment_status:
-            cursor.execute("UPDATE accounts SET payment_status = %s WHERE order_id = %s", (new_payment_status, update_payment_id))
+            cursor.execute(
+                "UPDATE accounts SET payment_status = %s WHERE order_id = %s",
+                (new_payment_status, update_payment_id)
+            )
             conn.commit()
             flash("Payment status updated.", "success")
 
@@ -560,25 +563,26 @@ def admin_orders():
         params = []
 
         if status_filter and status_filter.lower() != "all":
-            conditions.append("o.status = $" + str(len(params) + 1))
+            conditions.append("o.status = %s")
             params.append(status_filter)
 
         if shipment_status_filter and shipment_status_filter.lower() != "all":
-            conditions.append("s.status = $" + str(len(params) + 1))
+            conditions.append("s.status = %s")
             params.append(shipment_status_filter)
 
         if start_date:
-            conditions.append("o.order_date::DATE >= $" + str(len(params) + 1))
+            conditions.append("o.order_date::DATE >= %s")
             params.append(start_date)
 
         if end_date:
-            conditions.append("o.order_date::DATE <= $" + str(len(params) + 1))
+            conditions.append("o.order_date::DATE <= %s")
             params.append(end_date)
 
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
 
         query += " ORDER BY o.order_date DESC"
+
         cursor.execute(query, params)
         orders = cursor.fetchall()
 
@@ -675,13 +679,13 @@ def generate_pdf_report():
     params = []
 
     if order_date_from:
-        query += " AND o.order_date >= ?"
+        query += " AND o.order_date >= %s"
         params.append(order_date_from)
     if order_date_to:
-        query += " AND o.order_date <= ?"
+        query += " AND o.order_date <= %s"
         params.append(order_date_to)
     if status.lower() != "all":
-        query += " AND o.status = ?"
+        query += " AND o.status = %s"
         params.append(status)
 
     cursor.execute(query, params)
@@ -706,7 +710,7 @@ def generate_pdf_report():
 
     for order in orders:
         data.append([
-            str(order[0]), order[1], order[2], f"₹{order[3]:.2f}", order[4]
+            str(order[0]), order[1], str(order[2]), f"₹{order[3]:.2f}", order[4]
         ])
         total_sum += float(order[3])
 
@@ -733,7 +737,6 @@ def generate_pdf_report():
     response.headers['Content-Type'] = 'application/pdf'
     response.headers['Content-Disposition'] = 'inline; filename=order_report.pdf'
     return response
-
 def send_payment_failed_email(to_email, order_id, transaction_id):
     sender_email = "birundhatextiles@gmail.com"
     sender_password = "dzqf jank cyee wrod"
