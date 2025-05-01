@@ -2257,34 +2257,43 @@ def add_supplier():
 @app.route('/suppliers/edit/<int:id>', methods=['GET', 'POST'])
 def edit_supplier(id):
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM Suppliers WHERE id=%s", (id,))
+    try:
+        with conn.cursor() as cursor:
+            # Fetch the supplier data by ID
+            cursor.execute("SELECT * FROM Suppliers WHERE id = %s", (id,))
+            supplier = cursor.fetchone()
 
-    supplier = cursor.fetchone()
+            if not supplier:
+                flash("Supplier not found!", "danger")
+                return redirect(url_for('admin_suppliers'))
 
-    if not supplier:
-        flash("Supplier not found!", "danger")
-        return redirect(url_for('admin_suppliers'))
+            # Handle POST request to update supplier details
+            if request.method == 'POST':
+                name = request.form['name']
+                contact = request.form['contact']
+                email = request.form['email']
+                address = request.form['address']
 
-    if request.method == 'POST':
-        name = request.form['name']
-        contact = request.form['contact']
-        email = request.form['email']
-        address = request.form['address']
+                # Update the supplier details in the database
+                cursor.execute("""
+                    UPDATE Suppliers
+                    SET name=%s, contact=%s, email=%s, address=%s
+                    WHERE id=%s
+                """, (name, contact, email, address, id))
 
-        cursor.execute(
-    "UPDATE Suppliers SET name=%s, contact=%s, email=%s, address=%s WHERE id=%s",
-    (name, contact, email, address, id)
-)
+                conn.commit()  # Commit the changes to the database
+                flash("Supplier updated successfully!", "success")
+                return redirect(url_for('admin_suppliers'))
 
-        conn.commit()
-        conn.close()
+    except Exception as e:
+        conn.rollback()  # Rollback in case of error
+        flash("Error updating supplier: " + str(e), "danger")
+    finally:
+        conn.close()  # Ensure the connection is closed
 
-        flash("Supplier updated successfully!", "success")
-        return redirect(url_for('admin_suppliers'))
-
-    conn.close()
+    # Render the form with existing supplier data
     return render_template('supplier_form.html', action="Edit", supplier=supplier)
+
 
 # 🟢 Delete a Supplier
 @app.route('/suppliers/delete/<int:id>')

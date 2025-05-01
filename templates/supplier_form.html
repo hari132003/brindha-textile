@@ -1,37 +1,37 @@
 {% extends "admin.html" %}
 
 {% block content %}
-<div class="container">
-    <h2 class="mb-4">{{ action }} Supplier</h2>
+<div class="container mt-4">
+    <h2>{{ action }} Supplier</h2>
 
     <form method="POST">
         <div class="mb-3">
             <label for="supplier_number" class="form-label">Supplier Number</label>
             <input type="text" class="form-control" id="supplier_number" name="supplier_number"
-                   value="{{ supplier.supplier_number if supplier else 'Auto-Generated' }}" readonly>
+                   value="{{ supplier[1] }}" readonly>
         </div>
 
         <div class="mb-3">
             <label for="name" class="form-label">Supplier Name</label>
-            <input type="text" class="form-control" id="name" name="name" 
-                   value="{{ supplier.name if supplier else '' }}" required>
+            <input type="text" class="form-control" id="name" name="name"
+                   value="{{ supplier[2] if supplier[1] else '' }}" required>
         </div>
 
         <div class="mb-3">
             <label for="contact" class="form-label">Contact</label>
             <input type="text" class="form-control" id="contact" name="contact"
-                   value="{{ supplier.contact if supplier else '' }}">
+                   value="{{ supplier[3] if supplier[2] else '' }}">
         </div>
 
         <div class="mb-3">
             <label for="email" class="form-label">Email</label>
             <input type="email" class="form-control" id="email" name="email"
-                   value="{{ supplier.email if supplier else '' }}">
+                   value="{{ supplier[4] if supplier[3] else '' }}">
         </div>
 
         <div class="mb-3">
             <label for="address" class="form-label">Address</label>
-            <textarea class="form-control" id="address" name="address" rows="3">{{ supplier.address if supplier else '' }}</textarea>
+            <textarea class="form-control" id="address" name="address" rows="3">{{ supplier[5] if supplier[4] else '' }}</textarea>
         </div>
 
         <button type="submit" class="btn btn-success">{{ action }} Supplier</button>
