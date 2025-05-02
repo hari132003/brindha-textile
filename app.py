@@ -1482,11 +1482,20 @@ def delete_customer(id):
 
     conn = get_db_connection()
     cursor = conn.cursor()
+
+    # First, delete dependent data in the correct order
+    cursor.execute("DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE customer_id = %s)", (id,))
+    cursor.execute("DELETE FROM shipments WHERE order_id IN (SELECT id FROM orders WHERE customer_id = %s)", (id,))
+    cursor.execute("DELETE FROM accounts WHERE order_id IN (SELECT id FROM orders WHERE customer_id = %s)", (id,))
+    cursor.execute("DELETE FROM orders WHERE customer_id = %s", (id,))
+    
+    # Then delete the customer
     cursor.execute("DELETE FROM customers WHERE id = %s", (id,))
+
     conn.commit()
     conn.close()
 
-    flash("Customer deleted successfully!", "success")
+    flash("Customer and all related data deleted successfully!", "success")
     return redirect(url_for("admin_customers"))
 
 @app.route("/admin/products/edit/<int:id>", methods=["GET", "POST"])
@@ -2034,6 +2043,19 @@ def view_orders():
     conn = get_db_connection()
     cursor = conn.cursor()
 
+    # Ensure shipment status is 'cancelled' if order is cancelled
+    cancel_shipment_query = """
+        UPDATE shipments 
+        SET status = 'cancelled'
+        FROM orders 
+        WHERE shipments.order_id = orders.id 
+          AND orders.customer_id = %s 
+          AND orders.status = 'cancelled'
+          AND shipments.status != 'cancelled'
+    """
+    cursor.execute(cancel_shipment_query, (user_id,))
+    conn.commit()
+
     query = """
     SELECT o.id, o.order_date, o.total_price, o.status, 
            p.name, p.image_url, oi.quantity, oi.price,
@@ -2058,7 +2080,7 @@ def view_orders():
         query += " AND o.order_date BETWEEN %s AND %s"
         params.extend([start_date, end_date])
 
-    query += " ORDER BY o.order_date DESC"  # Optional: to show recent orders first
+    query += " ORDER BY o.order_date DESC"
 
     cursor.execute(query, tuple(params))
     orders = cursor.fetchall()
