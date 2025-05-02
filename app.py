@@ -1,7 +1,6 @@
 import os
 import uuid
 import string
-from fpdf import FPDF
 
 import psycopg2
 import psycopg2.extras
