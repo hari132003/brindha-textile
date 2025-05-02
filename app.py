@@ -1,6 +1,8 @@
 import os
 import uuid
 import string
+from fpdf import FPDF
+
 import psycopg2
 import psycopg2.extras
 
@@ -1425,16 +1427,39 @@ def view_products():
 def product_details(product_id):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, name, category, price, stock, pieces, description, image_url FROM products WHERE id = %s", (product_id,))
 
+    # Fetch product
+    cursor.execute("""
+        SELECT id, name, category, price, stock, pieces, description, image_url 
+        FROM products 
+        WHERE id = %s
+    """, (product_id,))
     product = cursor.fetchone()
-    conn.close()
 
     if not product:
+        conn.close()
         flash("Product not found!", "danger")
         return redirect(url_for("view_products"))
 
-    return render_template("product_detail.html", product=product)
+    pieces = product[5]
+    is_out_of_stock = pieces == 0
+
+    # Update stock to 'Out of Stock' if pieces == 0
+    if is_out_of_stock and product[4].lower() != "out of stock":
+        cursor.execute("UPDATE products SET stock = 'Out of Stock' WHERE id = %s", (product_id,))
+        conn.commit()
+
+        # Refresh product after update
+        cursor.execute("""
+            SELECT id, name, category, price, stock, pieces, description, image_url 
+            FROM products 
+            WHERE id = %s
+        """, (product_id,))
+        product = cursor.fetchone()
+
+    conn.close()
+    return render_template("product_detail.html", product=product, is_out_of_stock=is_out_of_stock)
+
 
 @app.route("/admin/customers/edit/<int:id>", methods=["GET", "POST"])
 def edit_customer(id):
@@ -2028,7 +2053,49 @@ def change_password():
         conn.rollback()
         flash("Failed to change password.", "danger")
         return redirect(url_for("profile"))
+@app.route("/orders/report")
+def generate_order_report():
+    if "user_id" not in session:
+        flash("Please log in to generate report.", "warning")
+        return redirect(url_for("login"))
 
+    user_id = session["user_id"]
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    SELECT o.id, o.order_date, o.total_price, o.status, 
+           p.name, p.image_url, oi.quantity, oi.price,
+           s.tracking_number, s.estimated_delivery, s.status AS shipment_status,
+           a.payment_status,
+           c.name AS customer_name, c.email, c.address
+    FROM orders o
+    JOIN order_items oi ON o.id = oi.order_id
+    JOIN products p ON oi.product_id = p.id
+    LEFT JOIN shipments s ON o.id = s.order_id
+    LEFT JOIN accounts a ON o.id = a.order_id AND a.customer_id = o.customer_id
+    JOIN customers c ON o.customer_id = c.id
+    WHERE o.customer_id = %s
+    ORDER BY o.order_date DESC
+    """, (user_id,))
+
+    orders = cursor.fetchall()
+    conn.close()
+
+    html = render_template("order_report.html", orders=orders)
+
+    # Generate PDF
+    result = BytesIO()
+    pdf = pisa.pisaDocument(BytesIO(html.encode("UTF-8")), result)
+    
+    if not pdf.err:
+        response = make_response(result.getvalue())
+        response.headers["Content-Type"] = "application/pdf"
+        response.headers["Content-Disposition"] = "attachment; filename=order_report.pdf"
+        return response
+    else:
+        flash("Failed to generate report.", "danger")
+        return redirect(url_for("view_orders"))
 @app.route("/view_orders")
 def view_orders():
     if "user_id" not in session:
@@ -2089,8 +2156,63 @@ def view_orders():
     return render_template("view_orders.html", orders=orders)
 
 
+@app.route("/generate_order_pdf_report", methods=["POST"])
+def generate_order_pdf_report():
+    order_id = request.form["order_id"]
+    
+    # Fetch order details and items from the database
+    conn = get_db_connection()
+    cursor = conn.cursor()
 
+    cursor.execute("""
+        SELECT o.id, o.order_date, o.total_price, o.status, 
+               p.name, p.image_url, oi.quantity, oi.price, 
+               s.tracking_number, s.estimated_delivery, s.status AS shipment_status,
+               a.payment_status, c.address AS customer_address
+        FROM orders o
+        JOIN order_items oi ON o.id = oi.order_id
+        JOIN products p ON oi.product_id = p.id
+        LEFT JOIN shipments s ON o.id = s.order_id
+        LEFT JOIN accounts a ON o.id = a.order_id AND a.customer_id = o.customer_id
+        JOIN customers c ON o.customer_id = c.id
+        WHERE o.id = %s
+    """, (order_id,))
+    
+    order_details = cursor.fetchall()
+    conn.close()
 
+    if not order_details:
+        flash("Order not found!", "danger")
+        return redirect(url_for('view_orders'))
+
+    # Create a PDF report using FPDF
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    
+    # Add a Unicode-compatible font (ensure the TTF file is in the correct path)
+    pdf.add_font('ArialUnicode', '', 'static/fonts/arialuni.ttf', uni=True)
+    pdf.set_font('ArialUnicode', '', 12)
+
+    # Add order details to the PDF
+    for order in order_details:
+        pdf.cell(200, 10, txt=f"Order ID: {order[0]}", ln=True)
+        pdf.cell(200, 10, txt=f"Date: {order[1]}", ln=True)
+        pdf.cell(200, 10, txt=f"Total Price: ₹{order[2]}", ln=True)
+        pdf.cell(200, 10, txt=f"Status: {order[3]}", ln=True)
+        pdf.cell(200, 10, txt=f"Shipment Status: {order[10]}", ln=True)
+        pdf.cell(200, 10, txt=f"Payment Status: {order[11]}", ln=True)
+        pdf.cell(200, 10, txt=f"Shipping Address: {order[12]}", ln=True)
+        pdf.cell(200, 10, txt="Product Details:", ln=True)
+        
+        pdf.cell(200, 10, txt=f"Product: {order[4]}, Quantity: {order[6]}, Price: ₹{order[7]}", ln=True)
+
+    # Generate the PDF file
+    pdf_output = BytesIO()
+    pdf.output(pdf_output)
+    pdf_output.seek(0)
+
+    return send_file(pdf_output, as_attachment=True, download_name=f"order_{order_id}_report.pdf", mimetype="application/pdf")
 
 
 @app.route("/cancel_order/<int:order_id>", methods=["POST"])
