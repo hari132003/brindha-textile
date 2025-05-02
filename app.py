@@ -1474,9 +1474,6 @@ def edit_customer(id):
 
     conn.close()
     return render_template("edit_customer.html", customer=customer)
-
-
-
 @app.route("/admin/customers/delete/<int:id>", methods=["POST"])
 def delete_customer(id):
     if session.get("role") != "admin":
@@ -1485,17 +1482,13 @@ def delete_customer(id):
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM customers WHERE id = %s",
-    (id,)
-)
+    cursor.execute("DELETE FROM customers WHERE id = %s", (id,))
     conn.commit()
     conn.close()
 
     flash("Customer deleted successfully!", "success")
     return redirect(url_for("admin_customers"))
 
-    conn.close()
-    return render_template("edit_customer.html", customer=customer)
 @app.route("/admin/products/edit/<int:id>", methods=["GET", "POST"])
 def edit_product(id):
     if session.get("role") != "admin":
