@@ -845,15 +845,15 @@ def delete_order(order_id):
 
     try:
         # Step 1: Delete order items first
-        cursor.execute("DELETE FROM order_items WHERE order_id = ?", (order_id,))
+        cursor.execute("DELETE FROM order_items WHERE order_id = %s", (order_id,))
         conn.commit()
 
         # Step 2: Delete related shipments
-        cursor.execute("DELETE FROM shipments WHERE order_id = ?", (order_id,))
+        cursor.execute("DELETE FROM shipments WHERE order_id = %s", (order_id,))
         conn.commit()
         
         # Step 3: Now delete the order
-        cursor.execute("DELETE FROM orders WHERE id = ?", (order_id,))
+        cursor.execute("DELETE FROM orders WHERE id = %s", (order_id,))
         conn.commit()
 
         return jsonify({"message": "Order deleted successfully!"}), 200
@@ -2135,6 +2135,7 @@ def view_orders():
     LEFT JOIN accounts a ON o.id = a.order_id AND a.customer_id = o.customer_id
     JOIN customers c ON o.customer_id = c.id
     WHERE o.customer_id = %s
+      AND a.payment_status = 'Paid'  -- Only show orders with paid status
     """
     params = [user_id]
 
@@ -2214,6 +2215,19 @@ def generate_order_pdf_report():
     return send_file(pdf_output, as_attachment=True, download_name=f"order_{order_id}_report.pdf", mimetype="application/pdf")
 
 
+def send_email(to_email, subject, body):
+    from_email = "birundhatextiles@gmail.com"
+    from_password = "dzqf jank cyee wrod"  # Use an app password for Gmail
+
+    msg = MIMEText(body)
+    msg["Subject"] = subject
+    msg["From"] = from_email
+    msg["To"] = to_email
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(from_email, from_password)
+        server.send_message(msg)
+
 @app.route("/cancel_order/<int:order_id>", methods=["POST"])
 def cancel_order(order_id):
     if "user_id" not in session:
@@ -2224,8 +2238,16 @@ def cancel_order(order_id):
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # Ensure the order belongs to the logged-in user
-    cursor.execute("SELECT id, order_date, total_price, status FROM orders WHERE customer_id = %s AND id = %s", (user_id, order_id))
+    # Get order and customer email & product name
+    cursor.execute("""
+        SELECT o.id, o.order_date, o.total_price, o.status, c.email, p.name
+        FROM orders o
+        JOIN customers c ON o.customer_id = c.id
+        JOIN order_items oi ON o.id = oi.order_id
+        JOIN products p ON oi.product_id = p.id
+        WHERE o.customer_id = %s AND o.id = %s
+        LIMIT 1
+    """, (user_id, order_id))
 
     order = cursor.fetchone()
 
@@ -2234,10 +2256,32 @@ def cancel_order(order_id):
     elif order[3] == "Cancelled":
         flash("Order is already cancelled!", "info")
     else:
+        # Cancel the order
         cursor.execute("UPDATE orders SET status = 'Cancelled' WHERE id = %s", (order_id,))
-
+        cursor.execute("UPDATE shipments SET status = 'cancelled' WHERE order_id = %s", (order_id,))
         conn.commit()
-        flash("Order cancelled successfully!", "success")
+
+        # Send email
+        order_id, order_date, total_price, status, email, product_name = order
+        subject = "Order Cancellation Confirmation"
+        body = f"""
+Dear Customer,
+
+Your order #{order_id} for the product '{product_name}' has been successfully cancelled.
+
+The amount of ₹{total_price} will be credited to your account within 7 working days.
+
+Thank you for shopping with us.
+
+Regards,
+Sri Birundha Textiles
+        """
+
+        try:
+            send_email(email, subject, body)
+            flash("Order cancelled and confirmation email sent.", "success")
+        except Exception as e:
+            flash(f"Order cancelled but failed to send email: {e}", "warning")
 
     conn.close()
     return redirect(url_for("view_orders"))
